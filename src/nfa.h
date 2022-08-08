@@ -1,8 +1,13 @@
 #ifndef NFA_H
-#define NFA_H  1
+#define NFA_H   1
 
 
-#define EPSILON (~0)
+typedef enum {
+    FLAG_NONE       = 0x0,  /* nothing special */
+    FLAG_EPSILON    = 0x1,  /* do not advance read head */
+    FLAG_WILDCARD   = 0x2,  /* the '.' symbol, match anything but whitespace */
+    FLAG_INVERT     = 0x4,  /* succeeded by '!' symbol */
+} t_flag_t;
 
 
 typedef struct state state_t;
@@ -10,22 +15,26 @@ typedef struct state state_t;
 typedef struct transition_list {
     state_t *next_state;
     struct transition_list *next;
+    struct transition_list *prev;
     char symbol;
-} transition_list_ele_t;
+    t_flag_t flags;
+} transition_t;
 
-typedef struct state {
-    transition_list_ele_t *transitions;
-    struct state *next; /* for linked list of states */
-    size_t position;    /* possibly unnecessary */
-} state_t;
+struct state {
+    transition_t *transitions;
+    struct state *next; /* for internal list of states */
+    struct state *prev; /* for internal list of states */
+};
 
 typedef struct nfa {
     state_t *q0;
-    size_t state_count;
+    state_t *qaccept;
+    size_t expr_len;
 } nfa_t;
 
-
 nfa_t *build_nfa(char *expression);
+
+void cleanup_states();
 
 
 #endif  /* #ifndef NFA_H */

@@ -54,5 +54,9 @@ following the final symbol in the match. Abstractly: start <= match < end
 
 # TODO:
 
-Set upper limit on buffer size, even for text files.
+- Set upper limit on buffer size, even for text files
+- Figure out how to eliminate epsilon transitions
+  - Ideally, never return from `build_nfa` with epsilon transitions still in place
+- Figure out how to handle `!( ... )`
+  - For now, don't allow expressions containing that form
 
