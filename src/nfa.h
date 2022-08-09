@@ -1,14 +1,22 @@
+#include "queue.h"
+
+
 #ifndef NFA_H
 #define NFA_H   1
 
 
 typedef enum {
-    FLAG_NONE       = 0x0,  /* nothing special */
-    FLAG_EPSILON    = 0x1,  /* do not advance read head */
-    FLAG_WILDCARD   = 0x2,  /* the '.' symbol, match anything but whitespace */
-    FLAG_INVERT     = 0x4,  /* succeeded by '!' symbol */
-} t_flag_t;
+    MATCH_NONE,
+    MATCH_PROGRESS,
+    MATCH_FOUND,
+} match_status_t;
 
+typedef enum {
+    FLAG_NONE,      /* nothing special */
+    FLAG_EPSILON,   /* do not advance read head */
+    FLAG_WILDCARD,  /* the '.' symbol, match any single symbol */
+    FLAG_INVERT,    /* succeeded by '!' symbol */
+} t_flag_t;
 
 typedef struct state state_t;
 
@@ -32,9 +40,33 @@ typedef struct nfa {
     size_t expr_len;
 } nfa_t;
 
+typedef struct nfa_arg {
+    char *buf;
+    size_t bufsize;
+    state_t *state;
+    state_t *qaccept;
+    size_t pos;
+    size_t end;
+    pthread_mutex_t lock;
+} nfa_arg_t;
+
+typedef struct plet {
+    pthread_t thread;
+    struct plet *next;
+    nfa_arg_t arg;
+} pthread_list_ele_t;
+
+typedef struct match {
+    size_t start;
+    size_t end;
+    struct match *next;
+} match_list_ele_t;
+
 nfa_t *build_nfa(char *expression);
 
 void cleanup_states();
+
+match_status_t search_buffer(char *buf, size_t bufsize, nfa_t *nfa, queue_t *match_list);
 
 
 #endif  /* #ifndef NFA_H */

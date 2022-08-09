@@ -15,7 +15,7 @@ In particular, the following are metacharacters:
 | -------- | ------------                                                                                                          |
 | `( )`    | Denotes a contained subexpression to which other metacharacters may be applied.                                       |
 | `\|`     | The union operator matches either the previous or next expression: i.e. `abc|123` matches `abc` or `123`.             |
-| `.`      | Matches any single symbol besides whitespace.                                                                         |
+| `.`      | Matches any single symbol.                                                                                            |
 | `*`      | Matches zero or more occurrences of the previous symbol or subexpression: i.e. `ab*c` matches both `ac` and `abbbbc`. |
 | `!`      | Matches any symbol *except* the next symbol ~~or subexpression~~: i.e. `a!bc` matches `atc` but not `abc`.            |
 | `?`      | Matches zero or one occurrence of the previous symbol or subexpression: i.e. `ab?c` matches both `abc` and `ac`.      |

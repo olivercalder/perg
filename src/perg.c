@@ -7,7 +7,6 @@
 #include "nfa.h"
 
 
-#define ERR_BINARY  (~0)
 #define ERR_EOF     0
 
 
@@ -59,25 +58,6 @@ typedef struct filepath_node {
     struct filepath_node *next;
 } filepath_node_t;
 
-typedef struct plet {
-    pthread_t thread;
-    size_t start;
-    size_t end;
-    struct plet *next;
-} pthread_list_ele_t;
-
-typedef struct match {
-    size_t start;
-    size_t end;
-    struct match *next;
-} match_list_ele_t;
-
-typedef enum {
-    MATCH_NONE,
-    MATCH_PROGRESS,
-    MATCH_FOUND,
-} match_status_t;
-
 
 /* Returns number of bytes read, including null terminator.
  * Return value of 0 means EOF, so caller should close file. */
@@ -119,13 +99,6 @@ size_t fill_buffer(FILE *infile, char **buf, size_t *bufsize, int *binary) {
         *buf = realloc(*buf, sizeof(char) * (*bufsize));
     }
     return bytes_read;
-}
-
-
-match_status_t search_buffer(char *buf, size_t bufsize, nfa_t *nfa, queue_t *match_list){
-    /* Do _not_ overwrite match_list->head or ->tail or assume they are NULL,
-     * since in text mode, if partial matches exist, they are preserved by
-     * maintaining a position in the match list. */
 }
 
 
@@ -171,7 +144,7 @@ void print_from_buffer(char *buf, size_t start, size_t end, color_t color, bold_
 
 match_status_t search_file(char *filename, FILE *infile, nfa_t *nfa) {
     char *buf, *fake_buf;
-    size_t bytes_read, bufsize = 4096, bytes_preserved, bytes_remaining, i;
+    size_t bytes_read, bufsize = 4096, bytes_preserved, bytes_remaining, earliest_partial_start, i;
     int binary = 0;
     queue_t match_list;
     match_list_ele_t *cur_match;
@@ -247,7 +220,28 @@ match_status_t search_file(char *filename, FILE *infile, nfa_t *nfa) {
         status = search_buffer(buf, bytes_read, nfa, &match_list);
         cur_match = (match_list_ele_t *)(match_list.head);  /* may be NULL if status == MATCH_NONE */
         switch (status) {
+            case MATCH_NONE:
+                bytes_read = fill_buffer(infile, &buf, &bufsize, &binary);
+                break;
+            case MATCH_PROGRESS:
+                /* Possibly full matches in list, so check full list to see if a full match is found */
+                earliest_partial_start = cur_match->start;
+                while (cur_match != NULL) {
+                    if (cur_match->end != 0)
+                        goto GOTO_MATCH_FOUND;
+                    cur_match = cur_match->next;
+                }
+                /* No full matches */
+                bytes_preserved = preserve_buffer_overlap(&buf, &bufsize, bytes_read, earliest_partial_start);
+                /* If binary, fill_buffer() never changes the bufsize, so the
+                 * following parameters should be unchanged by fill_buffer() */
+                fake_buf = buf + bytes_preserved;
+                bytes_remaining = bufsize - bytes_preserved;
+                bytes_read = bytes_preserved +
+                    fill_buffer(infile, &fake_buf, &bytes_remaining, &binary);
+                break;
             case MATCH_FOUND:
+GOTO_MATCH_FOUND:
                 confirmed_match = MATCH_FOUND;
                 fprintf(stderr, "Binary file %s matches\n", filename);
                 while (cur_match != NULL) {
@@ -256,20 +250,6 @@ match_status_t search_file(char *filename, FILE *infile, nfa_t *nfa) {
                     cur_match = (match_list_ele_t *)(match_list.head);
                 }
                 return MATCH_FOUND;
-            case MATCH_PROGRESS:
-                /* No full matches, so first match in queue must be in
-                 * progress, and must also be the earliest match index */
-                bytes_preserved = preserve_buffer_overlap(&buf, &bufsize, bytes_read, cur_match->start);
-                /* If binary, fill_buffer() never changes the bufsize, so the
-                    * following parameters should be unchanged by fill_buffer() */
-                fake_buf = buf + bytes_preserved;
-                bytes_remaining = bufsize - bytes_preserved;
-                bytes_read = bytes_preserved +
-                    fill_buffer(infile, &fake_buf, &bytes_remaining, &binary);
-                break;
-            case MATCH_NONE:
-                bytes_read = fill_buffer(infile, &buf, &bufsize, &binary);
-                break;
         }
     }
     free(buf);
