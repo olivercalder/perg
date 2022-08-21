@@ -8,6 +8,8 @@
 
 static state_t *state_list = NULL;
 
+static int state_count = 0;
+
 
 state_t *create_state() {
     state_t *new = malloc(sizeof(state_t));
@@ -17,14 +19,16 @@ state_t *create_state() {
     new->next = state_list;
     state_list = new;
     new->prev = NULL;
+    new->id = state_count;
+    state_count++;
     return new;
 }
 
 
 void add_transition(transition_t **transition_list,
-                             char symbol,
-                             t_flag_t flags,
-                             state_t *next_state) {
+                    char symbol,
+                    t_flag_t flags,
+                    state_t *next_state) {
     transition_t *new = malloc(sizeof(transition_t));
     new->next_state = next_state;
     new->next = *transition_list;
@@ -37,20 +41,6 @@ void add_transition(transition_t **transition_list,
 }
 
 
-void cleanup_states() {
-    state_t *tmp_s;
-    transition_t *tmp_t;
-    while ((tmp_s = state_list) != NULL) {
-        while ((tmp_t = tmp_s->transitions) != NULL) {
-            tmp_s->transitions = tmp_s->transitions->next;
-            free(tmp_t);
-        }
-        state_list = state_list->next;
-        free(tmp_s);
-    }
-}
-
-
 nfa_t *build_nfa(char *expression) {
     state_t *cur_state, *prev_state = NULL;
     transition_t *cur_transition;
@@ -59,7 +49,7 @@ nfa_t *build_nfa(char *expression) {
     nfa->qaccept = create_state();
     nfa->expr_len = 0;
     cur_state = nfa->q0;
-    while (expression[nfa->expr_len] != '\0') {
+    while (1) {
         switch (expression[nfa->expr_len]) {
             case '(':
                 nfa->expr_len++;    /* read from first char inside parens */
@@ -216,6 +206,33 @@ nfa_t *build_nfa(char *expression) {
 }
 
 
+void print_nfa(nfa_t *nfa, FILE *outfile) {
+    transition_t *cur_t;
+    state_t *cur_s = state_list;
+    fprintf(outfile, "Printing nfa:\n");
+    fprintf(outfile, "start: q%d\naccept: q%d\n", nfa->q0->id, nfa->qaccept->id);
+    for (cur_s = state_list; cur_s != NULL; cur_s = cur_s->next) {
+        for (cur_t = cur_s->transitions; cur_t != NULL; cur_t = cur_t->next) {
+            fprintf(outfile, "q%d->q%d: %c (%b)\n", cur_s->id, cur_t->next_state->id, cur_t->symbol, cur_t->flags);
+        }
+    }
+}
+
+
+void cleanup_states() {
+    state_t *tmp_s;
+    transition_t *tmp_t;
+    while ((tmp_s = state_list) != NULL) {
+        while ((tmp_t = tmp_s->transitions) != NULL) {
+            tmp_s->transitions = tmp_s->transitions->next;
+            free(tmp_t);
+        }
+        state_list = state_list->next;
+        free(tmp_s);
+    }
+}
+
+
 void *run_nfa(void *arg) {
     match_status_t match_status = MATCH_NONE;
     void *retval;
@@ -225,13 +242,7 @@ void *run_nfa(void *arg) {
     size_t future_child_pos;
     state_t *future_child_state = NULL;
     if (((nfa_arg_t *)arg)->state == ((nfa_arg_t *)arg)->qaccept) {
-        /* If already lower, don't bother trying to lock */
-        if (pos <= ((nfa_arg_t *)arg)->end)
-            return (void *)MATCH_FOUND;
-        pthread_mutex_lock(&((nfa_arg_t *)arg)->lock);
-        if (pos > ((nfa_arg_t *)arg)->end)
-            ((nfa_arg_t *)arg)->end = pos;
-        pthread_mutex_unlock(&((nfa_arg_t *)arg)->lock);
+        ((nfa_arg_t *)arg)->end = pos;
         return (void *)MATCH_FOUND;
     }
     if (pos == ((nfa_arg_t *)arg)->bufsize - 1 ||
@@ -239,9 +250,9 @@ void *run_nfa(void *arg) {
         return (void *)MATCH_PROGRESS;
     while (cur != NULL) {   /* catch first viable transition, but don't fork yet */
         if (cur->flags == FLAG_EPSILON || cur->flags == FLAG_WILDCARD ||
-                (cur->flags == FLAG_INVERT ?
+                (cur->symbol != '\0' && (cur->flags == FLAG_INVERT ?
                  ((nfa_arg_t *)arg)->buf[pos] != cur->symbol :
-                 ((nfa_arg_t *)arg)->buf[pos] == cur->symbol)) {
+                 ((nfa_arg_t *)arg)->buf[pos] == cur->symbol))) {
             future_child_pos = pos + (cur->flags != FLAG_EPSILON);
             future_child_state = cur->next_state;
             break;
@@ -250,8 +261,9 @@ void *run_nfa(void *arg) {
     }
     while (cur != NULL) {   /* catch subsequent viable transitions, and fork on each */
         if (cur->flags == FLAG_EPSILON || cur->flags == FLAG_WILDCARD ||
-                (cur->flags == FLAG_INVERT ? ((nfa_arg_t *)arg)->buf[pos] != cur->symbol :
-                 ((nfa_arg_t *)arg)->buf[pos] == cur->symbol)) {
+                (cur->symbol != '\0' && (cur->flags == FLAG_INVERT ?
+                 ((nfa_arg_t *)arg)->buf[pos] != cur->symbol :
+                 ((nfa_arg_t *)arg)->buf[pos] == cur->symbol))) {
             tmp = malloc(sizeof(pthread_list_ele_t));
             tmp->next = threads;
             threads = tmp;
@@ -262,7 +274,7 @@ void *run_nfa(void *arg) {
             tmp->arg.pos = future_child_pos;
             tmp->arg.end = 0;
             pthread_create(&tmp->thread, NULL, &run_nfa, &tmp->arg);
-            future_child_pos = pos + 1;
+            future_child_pos = pos + (cur->flags != FLAG_EPSILON);
             future_child_state = cur->next_state;
         }
         cur = cur->next;
@@ -278,6 +290,17 @@ void *run_nfa(void *arg) {
         ((nfa_arg_t *)arg)->pos = pos;
         return (void *)match_status;
     }
+    /* There were multiple viable transitions, so fork the last one */
+    tmp = malloc(sizeof(pthread_list_ele_t));
+    tmp->next = threads;
+    threads = tmp;
+    tmp->arg.buf = ((nfa_arg_t *)arg)->buf;
+    tmp->arg.bufsize = ((nfa_arg_t *)arg)->bufsize;
+    tmp->arg.state = future_child_state;
+    tmp->arg.qaccept = ((nfa_arg_t *)arg)->qaccept;
+    tmp->arg.pos = future_child_pos;
+    tmp->arg.end = 0;
+    pthread_create(&tmp->thread, NULL, &run_nfa, &tmp->arg);
     /* There were threads forked, so join them and take the best */
     while (threads != NULL) {
         pthread_join(threads->thread, &retval);
@@ -289,30 +312,37 @@ void *run_nfa(void *arg) {
             case MATCH_FOUND:
                 if (match_status == MATCH_NONE)
                     match_status = MATCH_FOUND;
+                break;
             case MATCH_PROGRESS:
                 match_status = MATCH_PROGRESS;
                 break;
         }
+        if (threads->arg.end > ((nfa_arg_t *)arg)->end)
+            ((nfa_arg_t *)arg)->end = threads->arg.end;
+        tmp = threads;
+        threads = threads->next;
+        free(tmp);
     }
     return (void *)match_status;
 }
 
 
-match_status_t search_buffer(char *buf, size_t bufsize, nfa_t *nfa, queue_t *match_list) {
+match_status_t search_buffer(char *buf, size_t bufsize, nfa_t *nfa, match_list_t *match_list) {
     /* Do _not_ overwrite match_list->head or ->tail or assume they are NULL,
      * since in text mode, if partial matches exist, they are preserved by
      * maintaining a position in the match list. */
-    size_t pos = 0;
+    size_t pos;
     pthread_list_ele_t *head = NULL, *tail = NULL, *tmp;
     match_list_ele_t *new_match;
     void *retval;
     match_status_t match_status = MATCH_NONE;
     transition_t *cur_transition;
-    while (pos < bufsize) {
+    for (pos = 0; pos < bufsize && buf[pos] != '\0'; pos++) {
         cur_transition = nfa->q0->transitions;
         while (cur_transition != NULL) {
             if (cur_transition->symbol == buf[pos])
                 break;
+            cur_transition = cur_transition->next;
         }
         if (cur_transition == NULL)
             /* no viable transitions, move on */
@@ -323,7 +353,7 @@ match_status_t search_buffer(char *buf, size_t bufsize, nfa_t *nfa, queue_t *mat
             head = tmp;
         else
             tail->next = tmp;
-        tmp = tmp;
+        tail = tmp;
         tmp->next = NULL;
         tmp->arg.buf = buf;
         tmp->arg.bufsize = bufsize;
@@ -331,12 +361,10 @@ match_status_t search_buffer(char *buf, size_t bufsize, nfa_t *nfa, queue_t *mat
         tmp->arg.qaccept = nfa->qaccept;
         tmp->arg.pos = pos;
         tmp->arg.end = 0;
-        pthread_mutex_init(&tmp->arg.lock, NULL);
         pthread_create(&tmp->thread, NULL, &run_nfa, &tmp->arg);
     }
     while (head != NULL) {
         pthread_join(head->thread, &retval);
-        pthread_mutex_destroy(&head->arg.lock);
         /* Here, prioritize MATCH_PROGRESS over MATCH_FOUND, and use the end
          * position to indicate that a full match was found. */
         switch ((match_status_t)retval) {
@@ -356,14 +384,15 @@ match_status_t search_buffer(char *buf, size_t bufsize, nfa_t *nfa, queue_t *mat
             new_match->end = head->arg.end;
             new_match->next = NULL;
             if (match_list->head == NULL)
-                match_list->head = (void *)new_match;
+                match_list->head = new_match;
             else
-                ((match_list_ele_t *)match_list->tail)->next = (void *)new_match;
-            match_list->tail = (void *)new_match;
+                match_list->tail->next = new_match;
+            match_list->tail = new_match;
         }
         tmp = head;
         head = head->next;
         free(tmp);
     }
+    return match_status;
 }
 

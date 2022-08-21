@@ -1,6 +1,3 @@
-#include "queue.h"
-
-
 #ifndef NFA_H
 #define NFA_H   1
 
@@ -32,6 +29,7 @@ struct state {
     transition_t *transitions;
     struct state *next; /* for internal list of states */
     struct state *prev; /* for internal list of states */
+    int id;
 };
 
 typedef struct nfa {
@@ -47,7 +45,6 @@ typedef struct nfa_arg {
     state_t *qaccept;
     size_t pos;
     size_t end;
-    pthread_mutex_t lock;
 } nfa_arg_t;
 
 typedef struct plet {
@@ -62,11 +59,18 @@ typedef struct match {
     struct match *next;
 } match_list_ele_t;
 
+typedef struct match_list {
+    match_list_ele_t *head;
+    match_list_ele_t *tail;
+} match_list_t;
+
 nfa_t *build_nfa(char *expression);
+
+void print_nfa(nfa_t *nfa, FILE *outfile);
 
 void cleanup_states();
 
-match_status_t search_buffer(char *buf, size_t bufsize, nfa_t *nfa, queue_t *match_list);
+match_status_t search_buffer(char *buf, size_t bufsize, nfa_t *nfa, match_list_t *match_list);
 
 
 #endif  /* #ifndef NFA_H */

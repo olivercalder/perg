@@ -3,14 +3,13 @@
 #include <unistd.h>
 #include <assert.h>
 
-#include "queue.h"
 #include "nfa.h"
 
 
 #define ERR_EOF     0
 
 
-#define COLOR_RESET ("\e[39;49m")
+#define COLOR_RESET ("\e[0;39;49m")
 
 
 typedef enum {
@@ -142,11 +141,11 @@ void print_from_buffer(char *buf, size_t start, size_t end, color_t color, bold_
 }
 
 
-match_status_t search_file(char *filename, FILE *infile, nfa_t *nfa) {
+match_status_t search_file(char *filename, FILE *infile, nfa_t *nfa, arg_flag_t flags) {
     char *buf, *fake_buf;
     size_t bytes_read, bufsize = 4096, bytes_preserved, bytes_remaining, earliest_partial_start, i;
     int binary = 0;
-    queue_t match_list;
+    match_list_t match_list;
     match_list_ele_t *cur_match;
     match_status_t status, confirmed_match = MATCH_NONE;
     /* Need some way of knowing whether a match was in progress at the
@@ -164,7 +163,7 @@ match_status_t search_file(char *filename, FILE *infile, nfa_t *nfa) {
     match_list.tail = NULL;
     while (binary == 0) {
         status = search_buffer(buf, bufsize, nfa, &match_list);
-        cur_match = (match_list_ele_t *)(match_list.head);
+        cur_match = match_list.head;
         switch (status) {
             case MATCH_FOUND:
                 confirmed_match = MATCH_FOUND;
@@ -182,15 +181,16 @@ match_status_t search_file(char *filename, FILE *infile, nfa_t *nfa) {
                     /* print current match */
                     print_from_buffer(buf, cur_match->start, cur_match->end, RED, BOLD);
                     i = cur_match->end;
-                    (match_list.head) = (void *)(cur_match->next);
+                    match_list.head = cur_match->next;
                     free(cur_match);
-                    cur_match = (match_list_ele_t *)(match_list.head);
+                    cur_match = match_list.head;
                 }
                 if (match_list.head == NULL) {    /* cur_match == NULL */
                     match_list.tail = NULL;
                     print_from_buffer(buf, i, bytes_read, DEFAULT, STANDARD);
                     printf("\n");
-                    bytes_read = fill_buffer(infile, &buf, &bufsize, &binary);
+                    if (bytes_read = fill_buffer(infile, &buf, &bufsize, &binary) == ERR_EOF)
+                        return confirmed_match;
                     break;
                 }
                 /* else there were some partial matches, so handle them by
@@ -205,23 +205,30 @@ match_status_t search_file(char *filename, FILE *infile, nfa_t *nfa) {
                  * which is very bad. NOT TRUE, since the whole reason we're
                  * here is that the buffer size is fixed.
                  * Nonetheless, disallow fixed buffer size for text input. */
+                while (match_list.head != NULL) {
+                    cur_match = match_list.head;
+                    match_list.head = match_list.head->next;
+                    free(cur_match);
+                }
                 fake_buf = buf + bytes_preserved;
                 bytes_remaining = bufsize - bytes_preserved;
                 bytes_read = bytes_preserved +
                     fill_buffer(infile, &fake_buf, &bytes_remaining, &binary);
                 break;
             case MATCH_NONE:
-                bytes_read = fill_buffer(infile, &buf, &bufsize, &binary);
+                if (bytes_read = fill_buffer(infile, &buf, &bufsize, &binary) == ERR_EOF)
+                    return confirmed_match;
                 /* assert((match_list.head | match_list.tail) == NULL); */
                 break;
         }
     }
     while (binary != 0) {   /* always true once true; a convenient "while (1)" */
         status = search_buffer(buf, bytes_read, nfa, &match_list);
-        cur_match = (match_list_ele_t *)(match_list.head);  /* may be NULL if status == MATCH_NONE */
+        cur_match = match_list.head;  /* may be NULL if status == MATCH_NONE */
         switch (status) {
             case MATCH_NONE:
-                bytes_read = fill_buffer(infile, &buf, &bufsize, &binary);
+                if (bytes_read = fill_buffer(infile, &buf, &bufsize, &binary) == ERR_EOF)
+                    return confirmed_match;
                 break;
             case MATCH_PROGRESS:
                 /* Possibly full matches in list, so check full list to see if a full match is found */
@@ -245,9 +252,9 @@ GOTO_MATCH_FOUND:
                 confirmed_match = MATCH_FOUND;
                 fprintf(stderr, "Binary file %s matches\n", filename);
                 while (cur_match != NULL) {
-                    (match_list.head) = (void *)(cur_match->next);
+                    match_list.head = cur_match->next;
                     free(cur_match);
-                    cur_match = (match_list_ele_t *)(match_list.head);
+                    cur_match = match_list.head;
                 }
                 return MATCH_FOUND;
         }
@@ -257,27 +264,83 @@ GOTO_MATCH_FOUND:
 }
 
 
+match_status_t search_filepaths(struct filepath_node *filepaths, nfa_t *nfa, arg_flag_t flags) {
+    struct filepath_node *curr_fp;
+    FILE *infile;
+    match_status_t status = MATCH_NONE;
+    for (curr_fp = filepaths; curr_fp != NULL; curr_fp = curr_fp->next) {
+        infile = fopen(curr_fp->path, "r");
+        if (search_file(curr_fp->path, infile, nfa, flags) == MATCH_FOUND)
+            status = MATCH_FOUND;
+        fclose(infile);
+    }
+}
+
+
+struct filepath_node *build_recursive_filepaths_list(char *filepath) {
+    struct filepath_node *head = NULL, *tail = NULL;
+    /* If filename is a directory, recursively add files in filename */
+    /* If filename is not a directory, add it to list */
+    assert(0 && "Recursive searching not yet implemented");
+    return head;
+}
+
+
+void cleanup_filepaths(struct filepath_node *filepaths) {
+    struct filepath_node *tmp;
+    while (filepaths != NULL) {
+        tmp = filepaths;
+        filepaths = filepaths->next;
+        free(tmp);
+    }
+}
+
+
+void print_usage(FILE *outfile, char *name) {
+    fprintf(outfile, "USAGE: %s [OPTION]... EXPRESSION [FILE]...\n");
+}
+
+
 int main(int argc, char *argv[]) {
-    char c, *buf, *expression;
-    struct filepath_node *filepaths_head, *filepath_ptr;
+    char *expression, *filename;
+    struct filepath_node *filepaths;
     FILE *infile, *outfile;
+    int i;
+    match_status_t status;
     nfa_t *nfa;
     arg_flag_t flags = ARG_FLAG_NONE;
     /* some code */
     if (argc < 2) {
-        /* ERROR: missing expression */
+        print_usage(stderr, argv[0]);
         exit(1);
     }
     expression = argv[1];
     /* some code */
     nfa = build_nfa(expression);
     /* some code */
-    if (argc > 2 || ARG_FLAG_R) {
-        for (filepath_ptr = filepaths_head; filepath_ptr != NULL; filepath_ptr = filepath_ptr->next) {
-            FILE *infile = fopen(filepath_ptr->path, "r");
-            search_file(filepath_ptr->path, infile, nfa);
+    if (flags & ARG_FLAG_R) {
+        if (argc == 2) {
+            filepaths = build_recursive_filepaths_list(".");
+            if (search_filepaths(filepaths, nfa, flags) == MATCH_FOUND)
+                status = MATCH_FOUND;
+            cleanup_filepaths(filepaths);
         }
-    } else {    /* read from stdin */
-        search_file("stdin", stdin, nfa);
+        for (i = 2; i < argc; i++) {
+            filepaths = build_recursive_filepaths_list(argv[i]);
+            if (search_filepaths(filepaths, nfa, flags) == MATCH_FOUND)
+                status = MATCH_FOUND;
+            cleanup_filepaths(filepaths);
+        }
+    } else {
+        if (argc == 2)  /* read from stdin */
+            status = search_file("stdin", stdin, nfa, flags);
+        for (i = 2; i < argc; i++) {
+            infile = fopen(argv[i], "r");
+            if (search_file(argv[i], infile, nfa, flags) == MATCH_FOUND)
+                status = MATCH_FOUND;
+            fclose(infile);
+        }
     }
+    cleanup_states();
+    return (status != MATCH_FOUND);
 }
