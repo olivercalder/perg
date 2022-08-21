@@ -237,7 +237,7 @@ void *run_nfa(void *arg) {
     match_status_t match_status = MATCH_NONE;
     void *retval;
     size_t pos = ((nfa_arg_t *)arg)->pos;
-    transition_t *cur = ((nfa_arg_t *)arg)->state->transitions;
+    transition_t *cur_t = ((nfa_arg_t *)arg)->state->transitions;
     pthread_list_ele_t *tmp, *threads = NULL;
     size_t future_child_pos;
     state_t *future_child_state = NULL;
@@ -245,39 +245,31 @@ void *run_nfa(void *arg) {
         ((nfa_arg_t *)arg)->end = pos;
         return (void *)MATCH_FOUND;
     }
-    if (pos == ((nfa_arg_t *)arg)->bufsize - 1 ||
-            ((nfa_arg_t *)arg)->buf[pos] == '\0')
+    if (pos == ((nfa_arg_t *)arg)->bufsize - 1)
         return (void *)MATCH_PROGRESS;
-    while (cur != NULL) {   /* catch first viable transition, but don't fork yet */
-        if (cur->flags == FLAG_EPSILON || cur->flags == FLAG_WILDCARD ||
-                (cur->symbol != '\0' && (cur->flags == FLAG_INVERT ?
-                 ((nfa_arg_t *)arg)->buf[pos] != cur->symbol :
-                 ((nfa_arg_t *)arg)->buf[pos] == cur->symbol))) {
-            future_child_pos = pos + (cur->flags != FLAG_EPSILON);
-            future_child_state = cur->next_state;
-            break;
+    while (cur_t != NULL) {   /* catch viable transitions, and fork on previous one */
+        if (cur_t->flags == FLAG_EPSILON || (((nfa_arg_t *)arg)->buf[pos] != '\0' &&
+                    (cur_t->flags == FLAG_WILDCARD ||
+                     (cur_t->flags == FLAG_INVERT ?
+                      ((nfa_arg_t *)arg)->buf[pos] != cur_t->symbol :
+                      ((nfa_arg_t *)arg)->buf[pos] == cur_t->symbol)))) {
+            if (future_child_state != NULL) {
+                tmp = malloc(sizeof(pthread_list_ele_t));
+                tmp->next = threads;
+                threads = tmp;
+                tmp->arg.buf = ((nfa_arg_t *)arg)->buf;
+                tmp->arg.bufsize = ((nfa_arg_t *)arg)->bufsize;
+                tmp->arg.state = future_child_state;
+                tmp->arg.qaccept = ((nfa_arg_t *)arg)->qaccept;
+                tmp->arg.pos = future_child_pos;
+                tmp->arg.end = 0;
+                pthread_create(&tmp->thread, NULL, &run_nfa, &tmp->arg);
+                //fprintf(stderr, "Forked thread on q%d->q%d: %c at position %d\n", ((nfa_arg_t *)arg)->state->id, future_child_state->id, ((nfa_arg_t *)arg)->buf[((nfa_arg_t *)arg)->pos], ((nfa_arg_t *)arg)->pos);
+            }
+            future_child_pos = pos + (cur_t->flags != FLAG_EPSILON);
+            future_child_state = cur_t->next_state;
         }
-        cur = cur->next;
-    }
-    while (cur != NULL) {   /* catch subsequent viable transitions, and fork on each */
-        if (cur->flags == FLAG_EPSILON || cur->flags == FLAG_WILDCARD ||
-                (cur->symbol != '\0' && (cur->flags == FLAG_INVERT ?
-                 ((nfa_arg_t *)arg)->buf[pos] != cur->symbol :
-                 ((nfa_arg_t *)arg)->buf[pos] == cur->symbol))) {
-            tmp = malloc(sizeof(pthread_list_ele_t));
-            tmp->next = threads;
-            threads = tmp;
-            tmp->arg.buf = ((nfa_arg_t *)arg)->buf;
-            tmp->arg.bufsize = ((nfa_arg_t *)arg)->bufsize;
-            tmp->arg.state = future_child_state;
-            tmp->arg.qaccept = ((nfa_arg_t *)arg)->qaccept;
-            tmp->arg.pos = future_child_pos;
-            tmp->arg.end = 0;
-            pthread_create(&tmp->thread, NULL, &run_nfa, &tmp->arg);
-            future_child_pos = pos + (cur->flags != FLAG_EPSILON);
-            future_child_state = cur->next_state;
-        }
-        cur = cur->next;
+        cur_t = cur_t->next;
     }
     if (future_child_state == NULL)
         return (void *)MATCH_NONE;
@@ -301,6 +293,7 @@ void *run_nfa(void *arg) {
     tmp->arg.pos = future_child_pos;
     tmp->arg.end = 0;
     pthread_create(&tmp->thread, NULL, &run_nfa, &tmp->arg);
+    //fprintf(stderr, "Forked thread on q%d->q%d: %c at position %d\n", ((nfa_arg_t *)arg)->state->id, future_child_state->id, ((nfa_arg_t *)arg)->buf[((nfa_arg_t *)arg)->pos], ((nfa_arg_t *)arg)->pos);
     /* There were threads forked, so join them and take the best */
     while (threads != NULL) {
         pthread_join(threads->thread, &retval);
@@ -362,6 +355,7 @@ match_status_t search_buffer(char *buf, size_t bufsize, nfa_t *nfa, match_list_t
         tmp->arg.pos = pos;
         tmp->arg.end = 0;
         pthread_create(&tmp->thread, NULL, &run_nfa, &tmp->arg);
+        //fprintf(stderr, "Forked thread on q%d->q%d: %c at position %d\n", ((nfa_arg_t *)arg)->state->id, future_child_state->id, ((nfa_arg_t *)arg)->buf[((nfa_arg_t *)arg)->pos], ((nfa_arg_t *)arg)->pos);
     }
     while (head != NULL) {
         pthread_join(head->thread, &retval);
