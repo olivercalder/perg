@@ -213,7 +213,7 @@ void print_nfa(nfa_t *nfa, FILE *outfile) {
     fprintf(outfile, "start: q%d\naccept: q%d\n", nfa->q0->id, nfa->qaccept->id);
     for (cur_s = state_list; cur_s != NULL; cur_s = cur_s->next) {
         for (cur_t = cur_s->transitions; cur_t != NULL; cur_t = cur_t->next) {
-            fprintf(outfile, "q%d->q%d: %c (%b)\n", cur_s->id, cur_t->next_state->id, cur_t->symbol, cur_t->flags);
+            fprintf(outfile, "q%d->q%d: %c (%d)\n", cur_s->id, cur_t->next_state->id, cur_t->symbol, cur_t->flags);
         }
     }
 }

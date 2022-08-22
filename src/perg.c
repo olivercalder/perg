@@ -297,7 +297,7 @@ void cleanup_filepaths(struct filepath_node *filepaths) {
 
 
 void print_usage(FILE *outfile, char *name) {
-    fprintf(outfile, "USAGE: %s [OPTION]... EXPRESSION [FILE]...\n");
+    fprintf(outfile, "USAGE: %s [OPTION]... EXPRESSION [FILE]...\n", name);
 }
 
 
