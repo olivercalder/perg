@@ -51,154 +51,154 @@ nfa_t *build_nfa(char *expression) {
     cur_state = nfa->q0;
     while (1) {
         switch (expression[nfa->expr_len]) {
-            case '(':
-                nfa->expr_len++;    /* read from first char inside parens */
-                assert(expression[nfa->expr_len] != '\0');
-                if (expression[nfa->expr_len] == ')') {
-                    /* subexpression is (), which is meaningless. But other
-                     * metachars *, ?, and + should have no effect when
-                     * following (). So verify this. */
-                    nfa->expr_len++;    /* move to next symbol */
-                    switch (expression[nfa->expr_len]) {
-                        case '*':
-                        case '?':
-                        case '+':
-                            break;
-                        default:
-                            nfa->expr_len--;    /* move back so "next symbol" is handled */
-                            break;
-                    }
-                }
-                sub_nfa = build_nfa(expression + nfa->expr_len);
-                if (sub_nfa == NULL)
-                    /* missing closing paren in a subexpression of this one */
-                    return NULL;
-                /* Make direct transition from cur_state to all transition states
-                 * of sub_nfa->q0, both to save time at runtime and to ensure
-                 * that there are no epsilon transitions from nfa->q0.
-                 * However, leave sub_nfa->q0 in place, since there may be
-                 * internal states which transition to sub_nfa->q0. */
-                cur_transition = sub_nfa->q0->transitions;
-                while (cur_transition != NULL) {
-                    add_transition(&cur_state->transitions,
-                            cur_transition->symbol,
-                            cur_transition->flags,
-                            cur_transition->next_state);
-                    cur_transition = cur_transition->next;
-                }
-                prev_state = cur_state;
-                cur_state = sub_nfa->qaccept;
-                nfa->expr_len += sub_nfa->expr_len;
-                if (expression[nfa->expr_len] != ')') {
-                    /* missing closing paren */
-                    fprintf(stderr, "ERROR: unclosed parenthesis in expression: %s\n", expression);
-                    return NULL;
-                }
-                break;
-            case ')':
-                /* Cannot be the case that prev symbol was '(', which would lead
-                 * to "()", since there is a check in the handler for '('.
-                 * Otherwise, the expression "()" would match everything, and
-                 * "...()*...", "...()?...", and "...()+..." would cause problems. */
-                add_transition(&cur_state->transitions, '\0', FLAG_EPSILON, nfa->qaccept);
-                return nfa;
-            case '\0':
-                add_transition(&cur_state->transitions, '\0', FLAG_EPSILON, nfa->qaccept);
-                return nfa;
-            case '|':
-                if (cur_state == nfa->q0)
-                    /* match nothing|..., so the | does nothing, so skip it */
+        case '(':
+            nfa->expr_len++;    /* read from first char inside parens */
+            assert(expression[nfa->expr_len] != '\0');
+            if (expression[nfa->expr_len] == ')') {
+                /* subexpression is (), which is meaningless. But other
+                    * metachars *, ?, and + should have no effect when
+                    * following (). So verify this. */
+                nfa->expr_len++;    /* move to next symbol */
+                switch (expression[nfa->expr_len]) {
+                case '*':
+                case '?':
+                case '+':
                     break;
-                add_transition(&cur_state->transitions, '\0', FLAG_EPSILON, nfa->qaccept);
-                cur_state = nfa->q0;
-                prev_state = NULL;
+                default:
+                    nfa->expr_len--;    /* move back so "next symbol" is handled */
+                    break;
+                }
+            }
+            sub_nfa = build_nfa(expression + nfa->expr_len);
+            if (sub_nfa == NULL)
+                /* missing closing paren in a subexpression of this one */
+                return NULL;
+            /* Make direct transition from cur_state to all transition states
+                * of sub_nfa->q0, both to save time at runtime and to ensure
+                * that there are no epsilon transitions from nfa->q0.
+                * However, leave sub_nfa->q0 in place, since there may be
+                * internal states which transition to sub_nfa->q0. */
+            cur_transition = sub_nfa->q0->transitions;
+            while (cur_transition != NULL) {
+                add_transition(&cur_state->transitions,
+                        cur_transition->symbol,
+                        cur_transition->flags,
+                        cur_transition->next_state);
+                cur_transition = cur_transition->next;
+            }
+            prev_state = cur_state;
+            cur_state = sub_nfa->qaccept;
+            nfa->expr_len += sub_nfa->expr_len;
+            if (expression[nfa->expr_len] != ')') {
+                /* missing closing paren */
+                fprintf(stderr, "ERROR: unclosed parenthesis in expression: %s\n", expression);
+                return NULL;
+            }
+            break;
+        case ')':
+            /* Cannot be the case that prev symbol was '(', which would lead
+                * to "()", since there is a check in the handler for '('.
+                * Otherwise, the expression "()" would match everything, and
+                * "...()*...", "...()?...", and "...()+..." would cause problems. */
+            add_transition(&cur_state->transitions, '\0', FLAG_EPSILON, nfa->qaccept);
+            return nfa;
+        case '\0':
+            add_transition(&cur_state->transitions, '\0', FLAG_EPSILON, nfa->qaccept);
+            return nfa;
+        case '|':
+            if (cur_state == nfa->q0)
+                /* match nothing|..., so the | does nothing, so skip it */
+                break;
+            add_transition(&cur_state->transitions, '\0', FLAG_EPSILON, nfa->qaccept);
+            cur_state = nfa->q0;
+            prev_state = NULL;
+            break;
+        case '.':
+            prev_state = cur_state;
+            cur_state = create_state();
+            add_transition(&prev_state->transitions, '\0',
+                    FLAG_WILDCARD, cur_state);
+            break;
+        case '*':
+            if (prev_state == cur_state)
+                /* two * in a row, which is equivalent to one, so ignore the second */
+                break;
+            add_transition(&cur_state->transitions, '\0', FLAG_EPSILON, prev_state);
+            cur_state = prev_state;
+            /* prev_state unchanged since it becomes meaningless */
+            break;
+        case '!':
+            nfa->expr_len++;
+            assert(expression[nfa->expr_len] != '\0');
+            switch (expression[nfa->expr_len]) {
+            case '(':
+            case ')':
+            case '|':
+            case '*':
+            case '?':
+            case '+':
+                fprintf(stderr, "ERROR: Unexpected symbol '%c' following ! symbol\n",
+                        expression[nfa->expr_len]);
+                assert(0);
+            case '!':
+                /* double negative: do nothing */
                 break;
             case '.':
-                prev_state = cur_state;
-                cur_state = create_state();
-                add_transition(&prev_state->transitions, '\0',
-                        FLAG_WILDCARD, cur_state);
-                break;
-            case '*':
-                if (prev_state == cur_state)
-                    /* two * in a row, which is equivalent to one, so ignore the second */
-                    break;
-                add_transition(&cur_state->transitions, '\0', FLAG_EPSILON, prev_state);
-                cur_state = prev_state;
-                /* prev_state unchanged since it becomes meaningless */
-                break;
-            case '!':
-                nfa->expr_len++;
-                assert(expression[nfa->expr_len] != '\0');
-                switch (expression[nfa->expr_len]) {
-                    case '(':
-                    case ')':
-                    case '|':
-                    case '*':
-                    case '?':
-                    case '+':
-                        fprintf(stderr, "ERROR: Unexpected symbol '%c' following ! symbol\n",
-                                expression[nfa->expr_len]);
-                        assert(0);
-                    case '!':
-                        /* double negative: do nothing */
-                        break;
-                    case '.':
-                        /* !. would seem to imply no symbol, so ignore it */
-                        break;
-                    case '\\':
-                        nfa->expr_len++;
-                        assert(expression[nfa->expr_len] != '\0');
-                        switch (expression[nfa->expr_len]) {
-                            case 't':
-                                prev_state = cur_state;
-                                cur_state = create_state();
-                                add_transition(&prev_state->transitions, '\t', FLAG_INVERT, cur_state);
-                                break;
-                            default:
-                                prev_state = cur_state;
-                                cur_state = create_state();
-                                add_transition(&prev_state->transitions, expression[nfa->expr_len],
-                                        FLAG_INVERT, cur_state);
-                                break;
-                        }
-                        break;
-                    default:
-                        prev_state = cur_state;
-                        cur_state = create_state();
-                        add_transition(&prev_state->transitions, expression[nfa->expr_len],
-                                FLAG_INVERT, cur_state);
-                        break;
-                }
-                break;
-            case '?':
-                if (prev_state == cur_state)
-                    /* previous symbol was *, so this ? is meaningless, so ignore it */
-                    break;
-                add_transition(&prev_state->transitions, '\0', FLAG_EPSILON, cur_state);
+                /* !. would seem to imply no symbol, so ignore it */
                 break;
             case '\\':
                 nfa->expr_len++;
                 assert(expression[nfa->expr_len] != '\0');
                 switch (expression[nfa->expr_len]) {
-                    case 't':
-                        prev_state = cur_state;
-                        cur_state = create_state();
-                        add_transition(&prev_state->transitions, '\t', FLAG_NONE, cur_state);
-                        break;
-                    default:
-                        prev_state = cur_state;
-                        cur_state = create_state();
-                        add_transition(&prev_state->transitions, expression[nfa->expr_len],
-                                FLAG_NONE, cur_state);
-                        break;
+                case 't':
+                    prev_state = cur_state;
+                    cur_state = create_state();
+                    add_transition(&prev_state->transitions, '\t', FLAG_INVERT, cur_state);
+                    break;
+                default:
+                    prev_state = cur_state;
+                    cur_state = create_state();
+                    add_transition(&prev_state->transitions, expression[nfa->expr_len],
+                            FLAG_INVERT, cur_state);
+                    break;
                 }
                 break;
             default:
                 prev_state = cur_state;
                 cur_state = create_state();
                 add_transition(&prev_state->transitions, expression[nfa->expr_len],
+                        FLAG_INVERT, cur_state);
+                break;
+            }
+            break;
+        case '?':
+            if (prev_state == cur_state)
+                /* previous symbol was *, so this ? is meaningless, so ignore it */
+                break;
+            add_transition(&prev_state->transitions, '\0', FLAG_EPSILON, cur_state);
+            break;
+        case '\\':
+            nfa->expr_len++;
+            assert(expression[nfa->expr_len] != '\0');
+            switch (expression[nfa->expr_len]) {
+            case 't':
+                prev_state = cur_state;
+                cur_state = create_state();
+                add_transition(&prev_state->transitions, '\t', FLAG_NONE, cur_state);
+                break;
+            default:
+                prev_state = cur_state;
+                cur_state = create_state();
+                add_transition(&prev_state->transitions, expression[nfa->expr_len],
                         FLAG_NONE, cur_state);
+                break;
+            }
+            break;
+        default:
+            prev_state = cur_state;
+            cur_state = create_state();
+            add_transition(&prev_state->transitions, expression[nfa->expr_len],
+                    FLAG_NONE, cur_state);
         }
         nfa->expr_len++;
     }

@@ -117,12 +117,12 @@ size_t preserve_buffer_overlap(char **buf, size_t *bufsize, size_t bytes_read, s
 void print_str_colored(char *str, color_t color, bold_t bold) {
     if (isatty(fileno(stdout))) {
         switch (bold) {
-            case STANDARD:
-                printf("\e[%dm%s%s", color, str, COLOR_RESET);
-                break;
-            case BOLD:
-                printf("\e[1;%dm%s%s", color, str, COLOR_RESET);
-                break;
+        case STANDARD:
+            printf("\e[%dm%s%s", color, str, COLOR_RESET);
+            break;
+        case BOLD:
+            printf("\e[1;%dm%s%s", color, str, COLOR_RESET);
+            break;
         }
     } else {
         printf("%s", str);
@@ -167,100 +167,100 @@ match_status_t search_file(char *filename, FILE *infile, nfa_t *nfa, arg_flag_t 
         status = search_buffer(buf, bufsize, nfa, &match_list);
         cur_match = match_list.head;
         switch (status) {
-            case MATCH_FOUND:
-                confirmed_match = MATCH_FOUND;
-                i = 0;
-                while (cur_match != NULL) {
-                    if (cur_match->end == bufsize) {
-                        /* reached the end of complete matches, so stop printing
-                         * and copy from start into beginning of buffer (by
-                         * falling through to MATCH_PROGRESS case, and make
-                         * match_list continue from here */
-                        break;
-                    }
-                    if (cur_match->start >= i) {
-                        /* print line between previous and current match */
-                        print_from_buffer(buf, i, cur_match->start, DEFAULT, STANDARD);
-                        /* print current match */
-                        print_from_buffer(buf, cur_match->start, cur_match->end, RED, BOLD);
-                        i = cur_match->end;
-                    }
-                    match_list.head = cur_match->next;
-                    free(cur_match);
-                    cur_match = match_list.head;
-                }
-                if (match_list.head == NULL) {    /* cur_match == NULL */
-                    match_list.tail = NULL;
-                    print_from_buffer(buf, i, bytes_read, DEFAULT, STANDARD);
-                    printf("\n");
-                    if (bytes_read = fill_buffer(infile, &buf, &bufsize, &binary) == ERR_EOF)
-                        return confirmed_match;
+        case MATCH_FOUND:
+            confirmed_match = MATCH_FOUND;
+            i = 0;
+            while (cur_match != NULL) {
+                if (cur_match->end == bufsize) {
+                    /* reached the end of complete matches, so stop printing
+                        * and copy from start into beginning of buffer (by
+                        * falling through to MATCH_PROGRESS case, and make
+                        * match_list continue from here */
                     break;
                 }
-                /* else there were some partial matches, so handle them by
-                 * falling through to case MATCH_PROGRESS */
-            case MATCH_PROGRESS:    /* only possible if upper limit on bufsize for text files */
-                assert(0);  /* don't bother */
-                /* No full matches, so first match in queue must be in
-                 * progress, and must also be the earliest match index */
-                bytes_preserved = preserve_buffer_overlap(&buf, &bufsize, bytes_read, cur_match->start);
-                /* If text, fill_buffer() might changes the bufsize, so the
-                 * following parameters might be unchanged by fill_buffer(),
-                 * which is very bad. NOT TRUE, since the whole reason we're
-                 * here is that the buffer size is fixed.
-                 * Nonetheless, disallow fixed buffer size for text input. */
-                while (match_list.head != NULL) {
-                    cur_match = match_list.head;
-                    match_list.head = match_list.head->next;
-                    free(cur_match);
+                if (cur_match->start >= i) {
+                    /* print line between previous and current match */
+                    print_from_buffer(buf, i, cur_match->start, DEFAULT, STANDARD);
+                    /* print current match */
+                    print_from_buffer(buf, cur_match->start, cur_match->end, RED, BOLD);
+                    i = cur_match->end;
                 }
-                fake_buf = buf + bytes_preserved;
-                bytes_remaining = bufsize - bytes_preserved;
-                bytes_read = bytes_preserved +
-                    fill_buffer(infile, &fake_buf, &bytes_remaining, &binary);
-                break;
-            case MATCH_NONE:
+                match_list.head = cur_match->next;
+                free(cur_match);
+                cur_match = match_list.head;
+            }
+            if (match_list.head == NULL) {    /* cur_match == NULL */
+                match_list.tail = NULL;
+                print_from_buffer(buf, i, bytes_read, DEFAULT, STANDARD);
+                printf("\n");
                 if (bytes_read = fill_buffer(infile, &buf, &bufsize, &binary) == ERR_EOF)
                     return confirmed_match;
-                /* assert((match_list.head | match_list.tail) == NULL); */
                 break;
+            }
+            /* else there were some partial matches, so handle them by
+                * falling through to case MATCH_PROGRESS */
+        case MATCH_PROGRESS:    /* only possible if upper limit on bufsize for text files */
+            assert(0 && "don't allow partial matches on text files");   /* don't bother */
+            /* No full matches, so first match in queue must be in
+                * progress, and must also be the earliest match index */
+            bytes_preserved = preserve_buffer_overlap(&buf, &bufsize, bytes_read, cur_match->start);
+            /* If text, fill_buffer() might changes the bufsize, so the
+                * following parameters might be unchanged by fill_buffer(),
+                * which is very bad. NOT TRUE, since the whole reason we're
+                * here is that the buffer size is fixed.
+                * Nonetheless, disallow fixed buffer size for text input. */
+            while (match_list.head != NULL) {
+                cur_match = match_list.head;
+                match_list.head = match_list.head->next;
+                free(cur_match);
+            }
+            fake_buf = buf + bytes_preserved;
+            bytes_remaining = bufsize - bytes_preserved;
+            bytes_read = bytes_preserved +
+                fill_buffer(infile, &fake_buf, &bytes_remaining, &binary);
+            break;
+        case MATCH_NONE:
+            if (bytes_read = fill_buffer(infile, &buf, &bufsize, &binary) == ERR_EOF)
+                return confirmed_match;
+            /* assert((match_list.head | match_list.tail) == NULL); */
+            break;
         }
     }
     while (binary != 0) {   /* always true once true; a convenient "while (1)" */
         status = search_buffer(buf, bytes_read, nfa, &match_list);
         cur_match = match_list.head;  /* may be NULL if status == MATCH_NONE */
         switch (status) {
-            case MATCH_NONE:
-                if (bytes_read = fill_buffer(infile, &buf, &bufsize, &binary) == ERR_EOF)
-                    return confirmed_match;
-                break;
-            case MATCH_PROGRESS:
-                /* Possibly full matches in list, so check full list to see if a full match is found */
-                earliest_partial_start = cur_match->start;
-                while (cur_match != NULL) {
-                    if (cur_match->end != 0)
-                        goto GOTO_MATCH_FOUND;
-                    cur_match = cur_match->next;
-                }
-                /* No full matches */
-                bytes_preserved = preserve_buffer_overlap(&buf, &bufsize, bytes_read, earliest_partial_start);
-                /* If binary, fill_buffer() never changes the bufsize, so the
-                 * following parameters should be unchanged by fill_buffer() */
-                fake_buf = buf + bytes_preserved;
-                bytes_remaining = bufsize - bytes_preserved;
-                bytes_read = bytes_preserved +
-                    fill_buffer(infile, &fake_buf, &bytes_remaining, &binary);
-                break;
-            case MATCH_FOUND:
-GOTO_MATCH_FOUND:
-                confirmed_match = MATCH_FOUND;
-                fprintf(stderr, "Binary file %s matches\n", filename);
-                while (cur_match != NULL) {
-                    match_list.head = cur_match->next;
-                    free(cur_match);
-                    cur_match = match_list.head;
-                }
-                return MATCH_FOUND;
+        case MATCH_NONE:
+            if (bytes_read = fill_buffer(infile, &buf, &bufsize, &binary) == ERR_EOF)
+                return confirmed_match;
+            break;
+        case MATCH_PROGRESS:
+            /* Possibly full matches in list, so check full list to see if a full match is found */
+            earliest_partial_start = cur_match->start;
+            while (cur_match != NULL) {
+                if (cur_match->end != 0)
+                    goto GOTO_BINARY_MATCH_FOUND;
+                cur_match = cur_match->next;
+            }
+            /* No full matches */
+            bytes_preserved = preserve_buffer_overlap(&buf, &bufsize, bytes_read, earliest_partial_start);
+            /* If binary, fill_buffer() never changes the bufsize, so the
+                * following parameters should be unchanged by fill_buffer() */
+            fake_buf = buf + bytes_preserved;
+            bytes_remaining = bufsize - bytes_preserved;
+            bytes_read = bytes_preserved +
+                fill_buffer(infile, &fake_buf, &bytes_remaining, &binary);
+            break;
+        case MATCH_FOUND:
+GOTO_BINARY_MATCH_FOUND:
+            confirmed_match = MATCH_FOUND;
+            fprintf(stderr, "Binary file %s matches\n", filename);
+            while (cur_match != NULL) {
+                match_list.head = cur_match->next;
+                free(cur_match);
+                cur_match = match_list.head;
+            }
+            return MATCH_FOUND;
         }
     }
     free(buf);
@@ -309,36 +309,89 @@ int main(int argc, char *argv[]) {
     char *expression, *filename;
     struct filepath_node *filepaths;
     FILE *infile, *outfile;
-    int i;
+    int opt, i;
     match_status_t status;
     nfa_t *nfa;
     arg_flag_t flags = ARG_FLAG_NONE;
     /* some code */
-    if (argc < 2) {
+    while ((opt = getopt(argc, argv, "aABcChHilLnoqrvwx")) != -1) {
+        switch (opt) {
+        case 'a':
+            flags |= ARG_FLAG_A;
+            break;
+        case 'h':
+            flags |= ARG_FLAG_H;
+            flags &= ~ARG_FLAG_HH;
+            break;
+        case 'H':
+            flags |= ARG_FLAG_HH;
+            flags &= ~ARG_FLAH_H;
+            break;
+        case 'i':
+            flags |= ARG_FLAG_I;
+            break;
+        case 'n':
+            flags |= ARG_FLAG_N;
+            break;
+        case 'o':
+            flags |= ARG_FLAG_O;
+            break;
+        case 'r':
+            flags |= ARG_FLAG_R;
+            break;
+        case 'v':
+            flags |= ARG_FLAG_V;
+            break;
+        case 'w':
+            flags |= ARG_FLAG_W;
+            break;
+        case 'x':
+            flags |= ARG_FLAG_X;
+            break;
+        /* The following flags are not yet implemented */
+        case 'A':
+        case 'B':
+        case 'c':
+        case 'C':
+        case 'l':
+        case 'L':
+        case 'q':
+            fprintf(stderr, "ERROR argument %c not yet implemented.\n");
+            print_usage(stderr, argv[0]);
+            exit(1);
+        default:
+            fprintf(stderr, "ERROR argument %c unrecognized.\n");
+            print_usage(stderr, argv[0]);
+            exit(1);
+        }
+    }
+    if (argc - optind < 2) {
         print_usage(stderr, argv[0]);
         exit(1);
     }
-    expression = argv[1];
+    expression = argv[optind];
     /* some code */
     nfa = build_nfa(expression);
+    if (nfa == NULL)
+        exit(1);
     /* some code */
     if (flags & ARG_FLAG_R) {
-        if (argc == 2) {
+        if (argc - optind == 1) {
             filepaths = build_recursive_filepaths_list(".");
             if (search_filepaths(filepaths, nfa, flags) == MATCH_FOUND)
                 status = MATCH_FOUND;
             cleanup_filepaths(filepaths);
-        }
-        for (i = 2; i < argc; i++) {
+        }   /* implied else */
+        for (i = optind + 1; i < argc; i++) {
             filepaths = build_recursive_filepaths_list(argv[i]);
             if (search_filepaths(filepaths, nfa, flags) == MATCH_FOUND)
                 status = MATCH_FOUND;
             cleanup_filepaths(filepaths);
         }
     } else {
-        if (argc == 2)  /* read from stdin */
+        if (argc - optind == 1) /* read from stdin */
             status = search_file("stdin", stdin, nfa, flags);
-        for (i = 2; i < argc; i++) {
+        for (i = optind + 1; i < argc; i++) {
             infile = fopen(argv[i], "r");
             if (search_file(argv[i], infile, nfa, flags) == MATCH_FOUND)
                 status = MATCH_FOUND;
