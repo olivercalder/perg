@@ -132,6 +132,8 @@ void print_str_colored(char *str, color_t color, bold_t bold) {
 
 void print_from_buffer(char *buf, size_t start, size_t end, color_t color, bold_t bold) {
     char char_to_save = buf[end];
+    if (end <= start)
+        return;
     buf[end] = '\0';
     if (color != DEFAULT)
         print_str_colored(buf + start, color, bold);
@@ -176,11 +178,13 @@ match_status_t search_file(char *filename, FILE *infile, nfa_t *nfa, arg_flag_t 
                          * match_list continue from here */
                         break;
                     }
-                    /* print line between previous and current match */
-                    print_from_buffer(buf, i, cur_match->start, DEFAULT, STANDARD);
-                    /* print current match */
-                    print_from_buffer(buf, cur_match->start, cur_match->end, RED, BOLD);
-                    i = cur_match->end;
+                    if (cur_match->start >= i) {
+                        /* print line between previous and current match */
+                        print_from_buffer(buf, i, cur_match->start, DEFAULT, STANDARD);
+                        /* print current match */
+                        print_from_buffer(buf, cur_match->start, cur_match->end, RED, BOLD);
+                        i = cur_match->end;
+                    }
                     match_list.head = cur_match->next;
                     free(cur_match);
                     cur_match = match_list.head;
