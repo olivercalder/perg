@@ -41,7 +41,7 @@ void add_transition(transition_t **transition_list,
 }
 
 
-nfa_t *build_nfa(char *expression) {
+nfa_t *build_nfa(char *expression, int case_insensitive) {
     state_t *cur_state, *prev_state = NULL;
     transition_t *cur_transition;
     nfa_t *sub_nfa, *nfa = malloc(sizeof(nfa_t));
@@ -69,7 +69,7 @@ nfa_t *build_nfa(char *expression) {
                     break;
                 }
             }
-            sub_nfa = build_nfa(expression + nfa->expr_len);
+            sub_nfa = build_nfa(expression + nfa->expr_len, case_insensitive);
             if (sub_nfa == NULL)
                 /* missing closing paren in a subexpression of this one */
                 return NULL;
@@ -116,8 +116,7 @@ nfa_t *build_nfa(char *expression) {
         case '.':
             prev_state = cur_state;
             cur_state = create_state();
-            add_transition(&prev_state->transitions, '\0',
-                    FLAG_WILDCARD, cur_state);
+            add_transition(&prev_state->transitions, '\0', FLAG_WILDCARD, cur_state);
             break;
         case '*':
             if (prev_state == cur_state)
@@ -158,16 +157,32 @@ nfa_t *build_nfa(char *expression) {
                 default:
                     prev_state = cur_state;
                     cur_state = create_state();
-                    add_transition(&prev_state->transitions, expression[nfa->expr_len],
-                            FLAG_INVERT, cur_state);
+                    if (case_insensitive &&
+                            (expression[nfa->expr_len] >= 0x41) &&
+                            (expression[nfa->expr_len] <= 0x5A))
+                        add_transition(&prev_state->transitions,
+                                        expression[nfa->expr_len] | 0x20,
+                                        FLAG_INVERT, cur_state);
+                    else
+                        add_transition(&prev_state->transitions,
+                                        expression[nfa->expr_len],
+                                        FLAG_INVERT, cur_state);
                     break;
                 }
                 break;
             default:
                 prev_state = cur_state;
                 cur_state = create_state();
-                add_transition(&prev_state->transitions, expression[nfa->expr_len],
-                        FLAG_INVERT, cur_state);
+                if (case_insensitive &&
+                        (expression[nfa->expr_len] >= 0x41) &&
+                        (expression[nfa->expr_len] <= 0x5A))
+                    add_transition(&prev_state->transitions,
+                                    expression[nfa->expr_len] | 0x20,
+                                    FLAG_INVERT, cur_state);
+                else
+                    add_transition(&prev_state->transitions,
+                                    expression[nfa->expr_len],
+                                    FLAG_INVERT, cur_state);
                 break;
             }
             break;
@@ -189,16 +204,32 @@ nfa_t *build_nfa(char *expression) {
             default:
                 prev_state = cur_state;
                 cur_state = create_state();
-                add_transition(&prev_state->transitions, expression[nfa->expr_len],
-                        FLAG_NONE, cur_state);
+                if (case_insensitive &&
+                        (expression[nfa->expr_len] >= 0x41) &&
+                        (expression[nfa->expr_len] <= 0x5A))
+                    add_transition(&prev_state->transitions,
+                                    expression[nfa->expr_len] | 0x20,
+                                    FLAG_NONE, cur_state);
+                else
+                    add_transition(&prev_state->transitions,
+                                    expression[nfa->expr_len],
+                                    FLAG_NONE, cur_state);
                 break;
             }
             break;
         default:
             prev_state = cur_state;
             cur_state = create_state();
-            add_transition(&prev_state->transitions, expression[nfa->expr_len],
-                    FLAG_NONE, cur_state);
+            if (case_insensitive &&
+                    (expression[nfa->expr_len] >= 0x41) &&
+                    (expression[nfa->expr_len] <= 0x5A))
+                add_transition(&prev_state->transitions,
+                                expression[nfa->expr_len] | 0x20,
+                                FLAG_NONE, cur_state);
+            else
+                add_transition(&prev_state->transitions,
+                                expression[nfa->expr_len],
+                                FLAG_NONE, cur_state);
         }
         nfa->expr_len++;
     }
@@ -241,18 +272,21 @@ void *run_nfa(void *arg) {
     pthread_list_ele_t *tmp, *threads = NULL;
     size_t future_child_pos;
     state_t *future_child_state = NULL;
+    char c = ((nfa_arg_t *)arg)->buf[pos];
     if (((nfa_arg_t *)arg)->state == ((nfa_arg_t *)arg)->qaccept) {
         ((nfa_arg_t *)arg)->end = pos;
         return (void *)MATCH_FOUND;
     }
     if (pos == ((nfa_arg_t *)arg)->bufsize - 1)
         return (void *)MATCH_PROGRESS;
+    if (((nfa_arg_t *)arg)->case_insensitive && c >= 0x41 && c <= 0x5A)
+        c |= 0x20;  /* transitions should already be case insensitive */
     while (cur_t != NULL) {   /* catch viable transitions, and fork on previous one */
-        if (cur_t->flags == FLAG_EPSILON || (((nfa_arg_t *)arg)->buf[pos] != '\0' &&
+        if (cur_t->flags == FLAG_EPSILON || (c != '\0' &&
                     (cur_t->flags == FLAG_WILDCARD ||
                      (cur_t->flags == FLAG_INVERT ?
-                      ((nfa_arg_t *)arg)->buf[pos] != cur_t->symbol :
-                      ((nfa_arg_t *)arg)->buf[pos] == cur_t->symbol)))) {
+                      c != cur_t->symbol :
+                      c == cur_t->symbol)))) {
             if (future_child_state != NULL) {
                 tmp = malloc(sizeof(pthread_list_ele_t));
                 tmp->next = threads;
@@ -263,6 +297,7 @@ void *run_nfa(void *arg) {
                 tmp->arg.qaccept = ((nfa_arg_t *)arg)->qaccept;
                 tmp->arg.pos = future_child_pos;
                 tmp->arg.end = 0;
+                tmp->arg.case_insensitive = ((nfa_arg_t *)arg)->case_insensitive;
                 pthread_create(&tmp->thread, NULL, &run_nfa, &tmp->arg);
                 //fprintf(stderr, "Forked thread on q%d->q%d: %c at position %d\n", ((nfa_arg_t *)arg)->state->id, future_child_state->id, ((nfa_arg_t *)arg)->buf[((nfa_arg_t *)arg)->pos], ((nfa_arg_t *)arg)->pos);
             }
@@ -292,6 +327,7 @@ void *run_nfa(void *arg) {
     tmp->arg.qaccept = ((nfa_arg_t *)arg)->qaccept;
     tmp->arg.pos = future_child_pos;
     tmp->arg.end = 0;
+    tmp->arg.case_insensitive = ((nfa_arg_t *)arg)->case_insensitive;
     pthread_create(&tmp->thread, NULL, &run_nfa, &tmp->arg);
     //fprintf(stderr, "Forked thread on q%d->q%d: %c at position %d\n", ((nfa_arg_t *)arg)->state->id, future_child_state->id, ((nfa_arg_t *)arg)->buf[((nfa_arg_t *)arg)->pos], ((nfa_arg_t *)arg)->pos);
     /* There were threads forked, so join them and take the best */
@@ -320,7 +356,9 @@ void *run_nfa(void *arg) {
 }
 
 
-match_status_t search_buffer(char *buf, size_t bufsize, nfa_t *nfa, match_list_t *match_list) {
+match_status_t search_buffer(char *buf, size_t bufsize, nfa_t *nfa,
+                             match_list_t *match_list,  int case_insensitive,
+                             int match_full_words,      int match_full_lines) {
     /* Do _not_ overwrite match_list->head or ->tail or assume they are NULL,
      * since in text mode, if partial matches exist, they are preserved by
      * maintaining a position in the match list. */
@@ -333,13 +371,19 @@ match_status_t search_buffer(char *buf, size_t bufsize, nfa_t *nfa, match_list_t
     for (pos = 0; pos < bufsize && buf[pos] != '\0'; pos++) {
         cur_transition = nfa->q0->transitions;
         while (cur_transition != NULL) {
-            if (cur_transition->symbol == buf[pos])
+            if (cur_transition->flags == FLAG_WILDCARD ||
+                    (cur_transition->flags == FLAG_INVERT ?
+                     cur_transition->symbol != buf[pos] :
+                     cur_transition->symbol == buf[pos]))
                 break;
             cur_transition = cur_transition->next;
         }
-        if (cur_transition == NULL)
+        if (cur_transition == NULL) {
             /* no viable transitions, move on */
+            if (match_full_lines)
+                return match_status;
             continue;
+        }
         /* "fork" a child to search from this index */
         tmp = malloc(sizeof(pthread_list_ele_t));
         if (tail == NULL)
@@ -354,23 +398,71 @@ match_status_t search_buffer(char *buf, size_t bufsize, nfa_t *nfa, match_list_t
         tmp->arg.qaccept = nfa->qaccept;
         tmp->arg.pos = pos;
         tmp->arg.end = 0;
+        tmp->arg.case_insensitive = case_insensitive;
+        if (match_full_lines) {
+            /* TODO figure out what to do about previous partial matches and preserved buffers */
+            if (match_list->head != NULL) {
+                /* This buffer isn't actually the start of a line, so don't count this match */
+                return MATCH_NONE;
+            }
+            match_status = (match_status_t)run_nfa(&tmp->arg);
+            if (buf[tmp->arg.end] != '\0') {
+                free(tmp);
+                return MATCH_NONE;
+            }
+            new_match = malloc(sizeof(match_list_ele_t));
+            new_match->start = tmp->arg.pos;    /* must be 0 */
+            new_match->end = tmp->arg.end;
+            new_match->next = NULL;
+            match_list->head = new_match;
+            match_list->tail = new_match;
+            free(tmp);
+            return match_status;
+        }
         pthread_create(&tmp->thread, NULL, &run_nfa, &tmp->arg);
         //fprintf(stderr, "Forked thread on q%d->q%d: %c at position %d\n", ((nfa_arg_t *)arg)->state->id, future_child_state->id, ((nfa_arg_t *)arg)->buf[((nfa_arg_t *)arg)->pos], ((nfa_arg_t *)arg)->pos);
+        if (match_full_words) { /* advance until buf[pos] is whitespace */
+            retval = NULL;  /* use retval as a bool to avoid declaring a new variable */
+            while (pos < bufsize) {
+                switch (buf[pos]) {
+                case '\0':
+                case '\t':
+                case ' ':
+                    retval = (void *)1;
+                    break;
+                default:
+                    pos++;
+                }
+                if (retval != NULL)
+                    break;
+            }
+        }
     }
     while (head != NULL) {
         pthread_join(head->thread, &retval);
+        if (match_full_words) {
+            switch (buf[head->arg.end]) {
+            case '\0':
+            case '\t':
+            case ' ':
+                break;
+            default:    /* not whitespace or end of buf, so not a match */
+                retval = (void *)MATCH_NONE;
+                head->arg.end = 0;
+            }
+        }
         /* Here, prioritize MATCH_PROGRESS over MATCH_FOUND, and use the end
          * position to indicate that a full match was found. */
         switch ((match_status_t)retval) {
-            case MATCH_NONE:
-                break;
-            case MATCH_FOUND:
-                if (match_status == MATCH_NONE)
-                    match_status = MATCH_FOUND;
-                break;
-            case MATCH_PROGRESS:
-                match_status = MATCH_PROGRESS;
-                break;
+        case MATCH_NONE:
+            break;
+        case MATCH_FOUND:
+            if (match_status == MATCH_NONE)
+                match_status = MATCH_FOUND;
+            break;
+        case MATCH_PROGRESS:
+            match_status = MATCH_PROGRESS;
+            break;
         }
         if (head->arg.end > head->arg.pos) {
             new_match = malloc(sizeof(match_list_ele_t));

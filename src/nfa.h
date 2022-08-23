@@ -45,6 +45,7 @@ typedef struct nfa_arg {
     state_t *qaccept;
     size_t pos;
     size_t end;
+    int case_insensitive;
 } nfa_arg_t;
 
 typedef struct plet {
@@ -64,13 +65,13 @@ typedef struct match_list {
     match_list_ele_t *tail;
 } match_list_t;
 
-nfa_t *build_nfa(char *expression);
+nfa_t *build_nfa(char *expression, int case_insensitive);
 
 void print_nfa(nfa_t *nfa, FILE *outfile);
 
 void cleanup_states();
 
-match_status_t search_buffer(char *buf, size_t bufsize, nfa_t *nfa, match_list_t *match_list);
+match_status_t search_buffer(char *buf, size_t bufsize, nfa_t *nfa, match_list_t *match_list, int case_insensitive, int match_full_words, int match_full_lines);
 
 
 #endif  /* #ifndef NFA_H */

@@ -60,7 +60,7 @@ typedef struct filepath_node {
 
 /* Returns number of bytes read, including null terminator.
  * Return value of 0 means EOF, so caller should close file. */
-size_t fill_buffer(FILE *infile, char **buf, size_t *bufsize, int *binary) {
+size_t fill_buffer(FILE *infile, char **buf, size_t *bufsize, int *binary, int binary_as_text) {
     char c;
     size_t bytes_read = 0;
     c = fgetc(infile);
@@ -81,7 +81,7 @@ size_t fill_buffer(FILE *infile, char **buf, size_t *bufsize, int *binary) {
                 (*buf)[bytes_read] = '\0';
                 bytes_read++;
                 return bytes_read;
-            } else if (c >= 128) {
+            } else if (c >= 128 && !binary_as_text) {
                 /* Binary file, ignore unless -a flag given... for now, always
                  * print error and stop reading file */
                 *binary = 1;
@@ -159,12 +159,15 @@ match_status_t search_file(char *filename, FILE *infile, nfa_t *nfa, arg_flag_t 
      * Current solution: match_status_t status
      */
     buf = malloc(sizeof(char) * bufsize);
-    if ((bytes_read = fill_buffer(infile, &buf, &bufsize, &binary)) == ERR_EOF)
+    if ((bytes_read = fill_buffer(infile, &buf, &bufsize, &binary, flags & ARG_FLAG_A)) == ERR_EOF)
         return confirmed_match;
     match_list.head = NULL;
     match_list.tail = NULL;
     while (binary == 0) {
-        status = search_buffer(buf, bufsize, nfa, &match_list);
+        status = search_buffer(buf, bufsize, nfa, &match_list,
+                               flags & ARG_FLAG_I,
+                               flags & ARG_FLAG_W,
+                               flags & ARG_FLAG_X );
         cur_match = match_list.head;
         switch (status) {
         case MATCH_FOUND:
@@ -193,7 +196,7 @@ match_status_t search_file(char *filename, FILE *infile, nfa_t *nfa, arg_flag_t 
                 match_list.tail = NULL;
                 print_from_buffer(buf, i, bytes_read, DEFAULT, STANDARD);
                 printf("\n");
-                if (bytes_read = fill_buffer(infile, &buf, &bufsize, &binary) == ERR_EOF)
+                if (bytes_read = fill_buffer(infile, &buf, &bufsize, &binary, flags & ARG_FLAG_A) == ERR_EOF)
                     return confirmed_match;
                 break;
             }
@@ -217,21 +220,24 @@ match_status_t search_file(char *filename, FILE *infile, nfa_t *nfa, arg_flag_t 
             fake_buf = buf + bytes_preserved;
             bytes_remaining = bufsize - bytes_preserved;
             bytes_read = bytes_preserved +
-                fill_buffer(infile, &fake_buf, &bytes_remaining, &binary);
+                fill_buffer(infile, &fake_buf, &bytes_remaining, &binary, flags & ARG_FLAG_A);
             break;
         case MATCH_NONE:
-            if (bytes_read = fill_buffer(infile, &buf, &bufsize, &binary) == ERR_EOF)
+            if (bytes_read = fill_buffer(infile, &buf, &bufsize, &binary, flags & ARG_FLAG_A) == ERR_EOF)
                 return confirmed_match;
             /* assert((match_list.head | match_list.tail) == NULL); */
             break;
         }
     }
     while (binary != 0) {   /* always true once true; a convenient "while (1)" */
-        status = search_buffer(buf, bytes_read, nfa, &match_list);
+        status = search_buffer(buf, bytes_read, nfa, &match_list,
+                               flags & ARG_FLAG_I,
+                               flags & ARG_FLAG_W,
+                               flags & ARG_FLAG_X);
         cur_match = match_list.head;  /* may be NULL if status == MATCH_NONE */
         switch (status) {
         case MATCH_NONE:
-            if (bytes_read = fill_buffer(infile, &buf, &bufsize, &binary) == ERR_EOF)
+            if (bytes_read = fill_buffer(infile, &buf, &bufsize, &binary, flags & ARG_FLAG_A) == ERR_EOF)
                 return confirmed_match;
             break;
         case MATCH_PROGRESS:
@@ -249,7 +255,7 @@ match_status_t search_file(char *filename, FILE *infile, nfa_t *nfa, arg_flag_t 
             fake_buf = buf + bytes_preserved;
             bytes_remaining = bufsize - bytes_preserved;
             bytes_read = bytes_preserved +
-                fill_buffer(infile, &fake_buf, &bytes_remaining, &binary);
+                fill_buffer(infile, &fake_buf, &bytes_remaining, &binary, flags & ARG_FLAG_A);
             break;
         case MATCH_FOUND:
 GOTO_BINARY_MATCH_FOUND:
@@ -325,7 +331,7 @@ int main(int argc, char *argv[]) {
             break;
         case 'H':
             flags |= ARG_FLAG_HH;
-            flags &= ~ARG_FLAH_H;
+            flags &= ~ARG_FLAG_H;
             break;
         case 'i':
             flags |= ARG_FLAG_I;
@@ -356,22 +362,22 @@ int main(int argc, char *argv[]) {
         case 'l':
         case 'L':
         case 'q':
-            fprintf(stderr, "ERROR argument %c not yet implemented.\n");
+            fprintf(stderr, "ERROR: option -%c not yet implemented.\n", opt);
             print_usage(stderr, argv[0]);
             exit(1);
         default:
-            fprintf(stderr, "ERROR argument %c unrecognized.\n");
+            fprintf(stderr, "ERROR: argument -%c unrecognized.\n", opt);
             print_usage(stderr, argv[0]);
             exit(1);
         }
     }
-    if (argc - optind < 2) {
+    if (argc - optind == 0) {
         print_usage(stderr, argv[0]);
         exit(1);
     }
     expression = argv[optind];
     /* some code */
-    nfa = build_nfa(expression);
+    nfa = build_nfa(expression, flags & ARG_FLAG_I);
     if (nfa == NULL)
         exit(1);
     /* some code */
