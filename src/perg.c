@@ -270,7 +270,7 @@ BINARY_MATCH_FOUND:
             goto RETURN_STATUS;
         }
     }
-GOTO_RETURN_STATUS:
+RETURN_STATUS:
     while (match_list.head != NULL) {
         tmp = match_list.head;
         match_list.head = tmp->next;
