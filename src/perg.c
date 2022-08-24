@@ -192,11 +192,11 @@ match_status_t search_file(char *filename, FILE *infile, nfa_t *nfa, arg_flag_t 
                 free(cur_match);
                 cur_match = match_list.head;
             }
-            if (match_list.head == NULL) {    /* cur_match == NULL */
+            if (match_list.head == NULL || !binary) {   /* cur_match == NULL */
                 match_list.tail = NULL;
                 print_from_buffer(buf, i, bytes_read, DEFAULT, STANDARD);
                 printf("\n");
-                if (bytes_read = fill_buffer(infile, &buf, &bufsize, &binary, flags & ARG_FLAG_A) == ERR_EOF)
+                if ((bytes_read = fill_buffer(infile, &buf, &bufsize, &binary, flags & ARG_FLAG_A)) == ERR_EOF)
                     return confirmed_match;
                 break;
             }
@@ -221,9 +221,11 @@ match_status_t search_file(char *filename, FILE *infile, nfa_t *nfa, arg_flag_t 
             bytes_remaining = bufsize - bytes_preserved;
             bytes_read = bytes_preserved +
                 fill_buffer(infile, &fake_buf, &bytes_remaining, &binary, flags & ARG_FLAG_A);
+            if (bytes_read == bytes_preserved)  /* fill_buffer() returned ERR_EOF */
+                return confirmed_match;
             break;
         case MATCH_NONE:
-            if (bytes_read = fill_buffer(infile, &buf, &bufsize, &binary, flags & ARG_FLAG_A) == ERR_EOF)
+            if ((bytes_read = fill_buffer(infile, &buf, &bufsize, &binary, flags & ARG_FLAG_A)) == ERR_EOF)
                 return confirmed_match;
             /* assert((match_list.head | match_list.tail) == NULL); */
             break;
