@@ -264,6 +264,12 @@ void cleanup_states() {
 }
 
 
+void free_nfa(nfa_t *nfa) {
+    cleanup_states();
+    free(nfa);
+}
+
+
 void *run_nfa(void *arg) {
     match_status_t match_status = MATCH_NONE;
     void *retval;
