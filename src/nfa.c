@@ -434,10 +434,10 @@ match_status_t search_buffer(char *buf, size_t bufsize, nfa_t *nfa,
         //fprintf(stderr, "Forked thread on q%d->q%d: %c at position %d\n", ((nfa_arg_t *)arg)->state->id, future_child_state->id, ((nfa_arg_t *)arg)->buf[((nfa_arg_t *)arg)->pos], ((nfa_arg_t *)arg)->pos);
         if (match_full_words) { /* advance until buf[pos] is whitespace */
 SKIP_TO_NEXT_WORD:
-            retval = NULL;  /* use retval as a bool to avoid declaring a new variable */
             while (pos < bufsize) {
                 switch (buf[pos]) {
                 case '\0':
+                    goto END_OF_BUF;
                 case '\t':
                 case ' ':
                     goto FOUND_WHITESPACE;
@@ -448,6 +448,7 @@ SKIP_TO_NEXT_WORD:
 FOUND_WHITESPACE:
         }
     }
+END_OF_BUF:
     while (head != NULL) {
         pthread_join(head->thread, &retval);
         if (match_full_words) {
