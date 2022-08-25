@@ -242,7 +242,8 @@ match_status_t search_file(char *filename, FILE *infile, nfa_t *nfa, arg_flag_t 
                 goto RETURN_STATUS;
             break;
         case MATCH_PROGRESS:
-            /* Possibly full matches in list, so check full list to see if a full match is found */
+            /* Possibly full matches in list, so check full list to see if a
+             * full match is found */
             earliest_partial_start = match_list.head->start;
             while (match_list.head != NULL) {
                 if (match_list.head->end != 0)  /* only MATCH_FOUND has end != 0 */

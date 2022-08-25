@@ -388,10 +388,14 @@ match_status_t search_buffer(char *buf, size_t bufsize, nfa_t *nfa,
                 break;
             cur_transition = cur_transition->next;
         }
+        if (match_full_lines && (cur_transition == NULL || match_list->head != NULL)) {
+            /* No viable transition from first position, or the buffer isn't
+             * actually the start of the line, so don't count any matches */
+            /* TODO figure out what to do about previous partial matches and preserved buffers */
+            return MATCH_NONE;
+        }
         if (cur_transition == NULL) {
             /* no viable transitions, move on */
-            if (match_full_lines)
-                return match_status;
             continue;
         }
         /* "fork" a child to search from this index */
@@ -410,11 +414,6 @@ match_status_t search_buffer(char *buf, size_t bufsize, nfa_t *nfa,
         tmp->arg.end = 0;
         tmp->arg.case_insensitive = case_insensitive;
         if (match_full_lines) {
-            /* TODO figure out what to do about previous partial matches and preserved buffers */
-            if (match_list->head != NULL) {
-                /* This buffer isn't actually the start of a line, so don't count this match */
-                return MATCH_NONE;
-            }
             match_status = (match_status_t)run_nfa(&tmp->arg);
             if (buf[tmp->arg.end] != '\0') {
                 free(tmp);
@@ -438,14 +437,12 @@ match_status_t search_buffer(char *buf, size_t bufsize, nfa_t *nfa,
                 case '\0':
                 case '\t':
                 case ' ':
-                    retval = (void *)1;
-                    break;
+                    goto FOUND_WHITESPACE;
                 default:
                     pos++;
                 }
-                if (retval != NULL)
-                    break;
             }
+FOUND_WHITESPACE:
         }
     }
     while (head != NULL) {
