@@ -6,8 +6,9 @@
 #include "nfa.h"
 
 
-#define ERR_EOF     0
+#define DEFAULT_BUFSIZE 512
 
+#define ERR_EOF     0
 
 #define COLOR_RESET ("\e[0;39;49m")
 
@@ -145,7 +146,7 @@ void print_from_buffer(char *buf, size_t start, size_t end, color_t color, bold_
 
 match_status_t search_file(char *filename, FILE *infile, nfa_t *nfa, arg_flag_t flags) {
     char *buf, *fake_buf;
-    size_t bytes_read, bufsize = 4096, bytes_preserved, bytes_remaining, earliest_partial_start, i;
+    size_t bytes_read, bufsize = DEFAULT_BUFSIZE, bytes_preserved, bytes_remaining, earliest_partial_start, i;
     int binary = 0;
     match_list_t match_list;
     match_list_ele_t *tmp;
