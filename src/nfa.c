@@ -364,7 +364,8 @@ void *run_nfa(void *arg) {
 
 match_status_t search_buffer(char *buf, size_t bufsize, nfa_t *nfa,
                              match_list_t *match_list,  int case_insensitive,
-                             int match_full_words,      int match_full_lines) {
+                             int match_full_words,      int match_full_lines,
+                             int invert_match) {
     /* Do _not_ overwrite match_list->head or ->tail or assume they are NULL,
      * since in text mode, if partial matches exist, they are preserved by
      * maintaining a position in the match list. */
@@ -374,20 +375,28 @@ match_status_t search_buffer(char *buf, size_t bufsize, nfa_t *nfa,
     void *retval;
     match_status_t match_status = MATCH_NONE;
     transition_t *cur_transition;
+    char c;
     for (pos = 0; pos < bufsize && buf[pos] != '\0'; pos++) {
         cur_transition = nfa->q0->transitions;
         while (cur_transition != NULL) {
+            c = buf[pos];
+            if (case_insensitive && c >= 0x41 && c <= 0x5A)
+                c |= 0x20;
             if (cur_transition->flags == FLAG_WILDCARD ||
                     (cur_transition->flags == FLAG_INVERT ?
-                     cur_transition->symbol != buf[pos] :
-                     cur_transition->symbol == buf[pos]))
+                     cur_transition->symbol != c :
+                     cur_transition->symbol == c))
                 break;
             cur_transition = cur_transition->next;
         }
+        if (match_full_lines && (cur_transition == NULL || match_list->head != NULL)) {
+            /* No viable transitions from first position, or the buffer isn't
+             * actually the start of the line, so don't count any matches */
+            /* TODO figure out what to do about previous partial matches and preserved buffers */
+            return (invert_match ? MATCH_FOUND : MATCH_NONE);
+        }
         if (cur_transition == NULL) {
             /* no viable transitions, move on */
-            if (match_full_lines)
-                return match_status;
             continue;
         }
         /* "fork" a child to search from this index */
@@ -406,15 +415,10 @@ match_status_t search_buffer(char *buf, size_t bufsize, nfa_t *nfa,
         tmp->arg.end = 0;
         tmp->arg.case_insensitive = case_insensitive;
         if (match_full_lines) {
-            /* TODO figure out what to do about previous partial matches and preserved buffers */
-            if (match_list->head != NULL) {
-                /* This buffer isn't actually the start of a line, so don't count this match */
-                return MATCH_NONE;
-            }
             match_status = (match_status_t)run_nfa(&tmp->arg);
             if (buf[tmp->arg.end] != '\0') {
                 free(tmp);
-                return MATCH_NONE;
+                return (invert_match ? MATCH_FOUND : MATCH_NONE);
             }
             new_match = malloc(sizeof(match_list_ele_t));
             new_match->start = tmp->arg.pos;    /* must be 0 */
@@ -423,7 +427,7 @@ match_status_t search_buffer(char *buf, size_t bufsize, nfa_t *nfa,
             match_list->head = new_match;
             match_list->tail = new_match;
             free(tmp);
-            return match_status;
+            goto RETURN_OR_INVERT_STATUS;
         }
         pthread_create(&tmp->thread, NULL, &run_nfa, &tmp->arg);
         //fprintf(stderr, "Forked thread on q%d->q%d: %c at position %d\n", ((nfa_arg_t *)arg)->state->id, future_child_state->id, ((nfa_arg_t *)arg)->buf[((nfa_arg_t *)arg)->pos], ((nfa_arg_t *)arg)->pos);
@@ -434,14 +438,12 @@ match_status_t search_buffer(char *buf, size_t bufsize, nfa_t *nfa,
                 case '\0':
                 case '\t':
                 case ' ':
-                    retval = (void *)1;
-                    break;
+                    goto FOUND_WHITESPACE;
                 default:
                     pos++;
                 }
-                if (retval != NULL)
-                    break;
             }
+FOUND_WHITESPACE:
         }
     }
     while (head != NULL) {
@@ -484,6 +486,17 @@ match_status_t search_buffer(char *buf, size_t bufsize, nfa_t *nfa,
         tmp = head;
         head = head->next;
         free(tmp);
+    }
+RETURN_OR_INVERT_STATUS:
+    if (invert_match) {
+        switch (match_status) {
+        case MATCH_NONE:
+            return MATCH_FOUND;
+        case MATCH_PROGRESS:
+            return MATCH_PROGRESS;
+        case MATCH_FOUND:
+            return MATCH_NONE;
+        }
     }
     return match_status;
 }

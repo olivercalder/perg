@@ -158,26 +158,34 @@ match_status_t search_file(char *filename, FILE *infile, nfa_t *nfa, arg_flag_t 
      * extension).
      * Current solution: match_status_t status
      */
+    match_list.head = NULL;
+    match_list.tail = NULL;
     buf = malloc(sizeof(char) * bufsize);
     if ((bytes_read = fill_buffer(infile, &buf, &bufsize, &binary, flags & ARG_FLAG_A)) == ERR_EOF)
         goto RETURN_STATUS;
-    match_list.head = NULL;
-    match_list.tail = NULL;
     while (binary == 0) {
-        status = search_buffer(buf, bufsize, nfa, &match_list,
+        status = search_buffer(buf, bytes_read, nfa, &match_list,
                                flags & ARG_FLAG_I,
                                flags & ARG_FLAG_W,
-                               flags & ARG_FLAG_X );
+                               flags & ARG_FLAG_X,
+                               flags & ARG_FLAG_V);
         switch (status) {
         case MATCH_FOUND:
             confirmed_match = MATCH_FOUND;
             i = 0;
+            if (flags & ARG_FLAG_V) {
+                while (match_list.head != NULL) {
+                    tmp = match_list.head;
+                    match_list.head = tmp->next;
+                    free(tmp);
+                }
+            }
             while (match_list.head != NULL) {
                 if (match_list.head->end == bufsize) {
                     /* reached the end of complete matches, so stop printing
-                        * and copy from start into beginning of buffer (by
-                        * falling through to MATCH_PROGRESS case, and make
-                        * match_list continue from here */
+                     * and copy from start into beginning of buffer (by
+                     * falling through to MATCH_PROGRESS case, and make
+                     * match_list continue from here */
                     break;
                 }
                 if (match_list.head->start >= i) {
@@ -200,17 +208,17 @@ match_status_t search_file(char *filename, FILE *infile, nfa_t *nfa, arg_flag_t 
                 break;
             }
             /* else there were some partial matches, so handle them by
-                * falling through to case MATCH_PROGRESS */
+             * falling through to case MATCH_PROGRESS */
         case MATCH_PROGRESS:    /* only possible if upper limit on bufsize for text files */
             assert(0 && "don't allow partial matches on text files");   /* don't bother */
             /* No full matches, so first match in queue must be in
-                * progress, and must also be the earliest match index */
+             * progress, and must also be the earliest match index */
             bytes_preserved = preserve_buffer_overlap(&buf, &bufsize, bytes_read, match_list.head->start);
             /* If text, fill_buffer() might changes the bufsize, so the
-                * following parameters might be unchanged by fill_buffer(),
-                * which is very bad. NOT TRUE, since the whole reason we're
-                * here is that the buffer size is fixed.
-                * Nonetheless, disallow fixed buffer size for text input. */
+             * following parameters might be unchanged by fill_buffer(),
+             * which is very bad. NOT TRUE, since the whole reason we're
+             * here is that the buffer size is fixed.
+             * Nonetheless, disallow fixed buffer size for text input. */
             while (match_list.head != NULL) {
                 tmp = match_list.head;
                 match_list.head = tmp->next;
@@ -224,6 +232,12 @@ match_status_t search_file(char *filename, FILE *infile, nfa_t *nfa, arg_flag_t 
                 goto RETURN_STATUS;
             break;
         case MATCH_NONE:
+            while (match_list.head != NULL) {
+                /* if invert match, will have matches in the list, else does nothing */
+                tmp = match_list.head;
+                match_list.head = tmp->next;
+                free(tmp);
+            }
             if ((bytes_read = fill_buffer(infile, &buf, &bufsize, &binary, flags & ARG_FLAG_A)) == ERR_EOF)
                 goto RETURN_STATUS;
             /* assert((match_list.head | match_list.tail) == NULL); */
@@ -234,14 +248,22 @@ match_status_t search_file(char *filename, FILE *infile, nfa_t *nfa, arg_flag_t 
         status = search_buffer(buf, bytes_read, nfa, &match_list,
                                flags & ARG_FLAG_I,
                                flags & ARG_FLAG_W,
-                               flags & ARG_FLAG_X);
+                               flags & ARG_FLAG_X,
+                               flags & ARG_FLAG_V);
         switch (status) {
         case MATCH_NONE:
+            while (match_list.head != NULL) {
+                /* if invert match, will have matches in the list, else does nothing */
+                tmp = match_list.head;
+                match_list.head = tmp->next;
+                free(tmp);
+            }
             if (bytes_read = fill_buffer(infile, &buf, &bufsize, &binary, flags & ARG_FLAG_A) == ERR_EOF)
                 goto RETURN_STATUS;
             break;
         case MATCH_PROGRESS:
-            /* Possibly full matches in list, so check full list to see if a full match is found */
+            /* Possibly full matches in list, so check full list to see if a
+             * full match is found */
             earliest_partial_start = match_list.head->start;
             while (match_list.head != NULL) {
                 if (match_list.head->end != 0)  /* only MATCH_FOUND has end != 0 */
@@ -253,7 +275,7 @@ match_status_t search_file(char *filename, FILE *infile, nfa_t *nfa, arg_flag_t 
             /* No full matches */
             bytes_preserved = preserve_buffer_overlap(&buf, &bufsize, bytes_read, earliest_partial_start);
             /* If binary, fill_buffer() never changes the bufsize, so the
-                * following parameters should be unchanged by fill_buffer() */
+             * following parameters should be unchanged by fill_buffer() */
             fake_buf = buf + bytes_preserved;
             bytes_remaining = bufsize - bytes_preserved;
             bytes_read = bytes_preserved +
@@ -265,6 +287,12 @@ match_status_t search_file(char *filename, FILE *infile, nfa_t *nfa, arg_flag_t 
             break;
         case MATCH_FOUND:
 BINARY_MATCH_FOUND:
+            while (match_list.head != NULL) {
+                /* if invert match, will have matches in the list, else does nothing */
+                tmp = match_list.head;
+                match_list.head = tmp->next;
+                free(tmp);
+            }
             confirmed_match = MATCH_FOUND;
             fprintf(stderr, "Binary file %s matches\n", filename);
             goto RETURN_STATUS;
