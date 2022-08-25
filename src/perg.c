@@ -168,11 +168,19 @@ match_status_t search_file(char *filename, FILE *infile, nfa_t *nfa, arg_flag_t 
         status = search_buffer(buf, bufsize, nfa, &match_list,
                                flags & ARG_FLAG_I,
                                flags & ARG_FLAG_W,
-                               flags & ARG_FLAG_X );
+                               flags & ARG_FLAG_X,
+                               flags & ARG_FLAG_V);
         switch (status) {
         case MATCH_FOUND:
             confirmed_match = MATCH_FOUND;
             i = 0;
+            if (flags & ARG_FLAG_V) {
+                while (match_list.head != NULL) {
+                    tmp = match_list.head;
+                    match_list.head = tmp->next;
+                    free(tmp);
+                }
+            }
             while (match_list.head != NULL) {
                 if (match_list.head->end == bufsize) {
                     /* reached the end of complete matches, so stop printing
@@ -226,6 +234,13 @@ match_status_t search_file(char *filename, FILE *infile, nfa_t *nfa, arg_flag_t 
                 goto RETURN_STATUS;
             break;
         case MATCH_NONE:
+            while (match_list.head != NULL) {
+                /* if invert_match, will have matches in the list, else does nothing */
+                tmp = match_list.head;
+                match_list.head = tmp->next;
+                free(tmp);
+            }
+            match_list.tail = NULL;
             if ((bytes_read = fill_buffer(infile, &buf, &bufsize, &binary, flags & ARG_FLAG_A)) == ERR_EOF)
                 goto RETURN_STATUS;
             /* assert((match_list.head | match_list.tail) == NULL); */
@@ -236,9 +251,17 @@ match_status_t search_file(char *filename, FILE *infile, nfa_t *nfa, arg_flag_t 
         status = search_buffer(buf, bufsize, nfa, &match_list,
                                flags & ARG_FLAG_I,
                                flags & ARG_FLAG_W,
-                               flags & ARG_FLAG_X);
+                               flags & ARG_FLAG_X,
+                               flags & ARG_FLAG_V);
         switch (status) {
         case MATCH_NONE:
+            while (match_list.head != NULL) {
+                /* if invert_match, will have matches in the list, else does nothing */
+                tmp = match_list.head;
+                match_list.head = tmp->next;
+                free(tmp);
+            }
+            match_list.tail = NULL;
             if (bytes_read = fill_buffer(infile, &buf, &bufsize, &binary, flags & ARG_FLAG_A) == ERR_EOF)
                 goto RETURN_STATUS;
             break;

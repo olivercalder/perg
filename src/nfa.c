@@ -364,7 +364,8 @@ void *run_nfa(void *arg) {
 
 match_status_t search_buffer(char *buf, size_t bufsize, nfa_t *nfa,
                              match_list_t *match_list,  int case_insensitive,
-                             int match_full_words,      int match_full_lines) {
+                             int match_full_words,      int match_full_lines,
+                             int invert_match) {
     /* Do _not_ overwrite match_list->head or ->tail or assume they are NULL,
      * since in text mode, if partial matches exist, they are preserved by
      * maintaining a position in the match list. */
@@ -392,7 +393,7 @@ match_status_t search_buffer(char *buf, size_t bufsize, nfa_t *nfa,
             /* No viable transition from first position, or the buffer isn't
              * actually the start of the line, so don't count any matches */
             /* TODO figure out what to do about previous partial matches and preserved buffers */
-            return MATCH_NONE;
+            return (invert_match ? MATCH_FOUND : MATCH_NONE);
         }
         if (cur_transition == NULL) {
             /* no viable transitions, move on */
@@ -419,7 +420,7 @@ match_status_t search_buffer(char *buf, size_t bufsize, nfa_t *nfa,
             match_status = (match_status_t)run_nfa(&tmp->arg);
             if (buf[tmp->arg.end] != '\0') {
                 free(tmp);
-                return MATCH_NONE;
+                return (invert_match ? MATCH_FOUND : MATCH_NONE);
             }
             new_match = malloc(sizeof(match_list_ele_t));
             new_match->start = tmp->arg.pos;    /* must be 0 */
@@ -428,7 +429,7 @@ match_status_t search_buffer(char *buf, size_t bufsize, nfa_t *nfa,
             match_list->head = new_match;
             match_list->tail = new_match;
             free(tmp);
-            return match_status;
+            goto RETURN_OR_INVERT_STATUS;
         }
         pthread_create(&tmp->thread, NULL, &run_nfa, &tmp->arg);
         //fprintf(stderr, "Forked thread on q%d->q%d: %c at position %d\n", ((nfa_arg_t *)arg)->state->id, future_child_state->id, ((nfa_arg_t *)arg)->buf[((nfa_arg_t *)arg)->pos], ((nfa_arg_t *)arg)->pos);
@@ -489,6 +490,17 @@ END_OF_BUF:
         tmp = head;
         head = head->next;
         free(tmp);
+    }
+RETURN_OR_INVERT_STATUS:
+    if (invert_match) {
+        switch (match_status) {
+        case MATCH_NONE:
+            return MATCH_FOUND;
+        case MATCH_PROGRESS:
+            return MATCH_PROGRESS;
+        case MATCH_FOUND:
+            return MATCH_NONE;
+        }
     }
     return match_status;
 }
