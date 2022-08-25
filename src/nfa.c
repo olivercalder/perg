@@ -374,13 +374,17 @@ match_status_t search_buffer(char *buf, size_t bufsize, nfa_t *nfa,
     void *retval;
     match_status_t match_status = MATCH_NONE;
     transition_t *cur_transition;
+    char c;
     for (pos = 0; pos < bufsize && buf[pos] != '\0'; pos++) {
+        c = buf[pos];
+        if (case_insensitive && c >= 0x41 && c <= 0x5A)
+            c |= 0x20;
         cur_transition = nfa->q0->transitions;
         while (cur_transition != NULL) {
             if (cur_transition->flags == FLAG_WILDCARD ||
                     (cur_transition->flags == FLAG_INVERT ?
-                     cur_transition->symbol != buf[pos] :
-                     cur_transition->symbol == buf[pos]))
+                     cur_transition->symbol != c :
+                     cur_transition->symbol == c))
                 break;
             cur_transition = cur_transition->next;
         }
