@@ -19,6 +19,12 @@ $(BUILD_DIR)/%.o : $(SRC_DIR)/%.c
 
 .PHONY: clean debug
 
+install : $(BUILD_DIR)/$(TARGET_EXEC)
+	cp $(BUILD_DIR)/$(TARGET_EXEC) /usr/local/bin
+
+uninstall :
+	rm -f /usr/local/bin/$(TARGET_EXEC)
+
 debug : clean
 	CFLAGS += -Og -g
 	$(TARGET_EXEC)
