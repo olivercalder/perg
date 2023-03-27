@@ -8,7 +8,7 @@ SRCS	:= $(shell find $(SRC_DIR) -name '*.c')
 OBJS	:= $(SRCS:$(SRC_DIR)/%.c=$(BUILD_DIR)/%.o)
 
 CC	= gcc
-CFLAGS	= -Wall -Werror -O3 -std=gnu89 -lpthread
+CFLAGS	= -Wall -Werror -O3 -std=gnu89 -pthread
 
 $(BUILD_DIR)/$(TARGET_EXEC) : $(OBJS)
 	$(CC)  $(CFLAGS)  -o $@  $(OBJS)
