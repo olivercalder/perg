@@ -377,6 +377,7 @@ match_status_t search_buffer(char *buf, size_t bufsize, nfa_t *nfa,
     transition_t *cur_transition;
     char c;
     for (pos = 0; pos < bufsize && buf[pos] != '\0'; pos++) {
+TOP_OF_FOR_LOOP:
         c = buf[pos];
         if (case_insensitive && c >= 0x41 && c <= 0x5A)
             c |= 0x20;
@@ -441,12 +442,11 @@ SKIP_TO_NEXT_WORD:
                     goto END_OF_BUF;
                 case '\t':
                 case ' ':
-                    goto FOUND_WHITESPACE;
+                    goto TOP_OF_FOR_LOOP;
                 default:
                     pos++;
                 }
             }
-FOUND_WHITESPACE:
         }
     }
 END_OF_BUF:
