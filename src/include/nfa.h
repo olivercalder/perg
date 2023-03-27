@@ -69,7 +69,7 @@ nfa_t *build_nfa(char *expression, int case_insensitive);
 
 void print_nfa(nfa_t *nfa, FILE *outfile);
 
-void free_nfa();
+void free_nfa(nfa_t *nfa);
 
 match_status_t search_buffer(char *buf, size_t bufsize, nfa_t *nfa, match_list_t *match_list, int case_insensitive, int match_full_words, int match_full_lines, int invert_match);
 

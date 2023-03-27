@@ -3,7 +3,7 @@
 #include <assert.h>
 #include <pthread.h>
 
-#include "nfa.h"
+#include "include/nfa.h"
 
 
 static state_t *state_list = NULL;

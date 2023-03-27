@@ -3,7 +3,7 @@
 #include <unistd.h>
 #include <assert.h>
 
-#include "nfa.h"
+#include "include/nfa.h"
 
 
 #define DEFAULT_BUFSIZE 512
@@ -262,7 +262,7 @@ match_status_t search_file(char *filename, FILE *infile, nfa_t *nfa, arg_flag_t 
                 free(tmp);
             }
             match_list.tail = NULL;
-            if (bytes_read = fill_buffer(infile, &buf, &bufsize, &binary, flags & ARG_FLAG_A) == ERR_EOF)
+            if ((bytes_read = fill_buffer(infile, &buf, &bufsize, &binary, flags & ARG_FLAG_A)) == ERR_EOF)
                 goto RETURN_STATUS;
             break;
         case MATCH_PROGRESS:
@@ -326,11 +326,12 @@ match_status_t search_filepaths(struct filepath_node *filepaths, nfa_t *nfa, arg
             status = MATCH_FOUND;
         fclose(infile);
     }
+    return status;
 }
 
 
 struct filepath_node *build_recursive_filepaths_list(char *filepath) {
-    struct filepath_node *head = NULL, *tail = NULL;
+    struct filepath_node *head = NULL;//, *tail = NULL;
     /* If filename is a directory, recursively add files in filename */
     /* If filename is not a directory, add it to list */
     assert(0 && "Recursive searching not yet implemented");
@@ -354,11 +355,11 @@ void print_usage(FILE *outfile, char *name) {
 
 
 int main(int argc, char *argv[]) {
-    char *expression, *filename;
+    char *expression;
     struct filepath_node *filepaths;
-    FILE *infile, *outfile;
+    FILE *infile;
     int opt, i;
-    match_status_t status;
+    match_status_t status = MATCH_NONE;
     nfa_t *nfa;
     arg_flag_t flags = ARG_FLAG_NONE;
     /* some code */
