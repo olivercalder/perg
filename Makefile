@@ -1,11 +1,18 @@
 TARGET_EXEC	:= perg
 
+# Local directories
 BUILD_DIR	:= ./build
 SRC_DIR	:= ./src
-INC_DIRS := $(shell find $(SRC_DIR) -type d)
+INC_DIRS	:= $(shell find $(SRC_DIR) -type d)
 
+# Source and object file names
 SRCS	:= $(shell find $(SRC_DIR) -name '*.c')
 OBJS	:= $(SRCS:$(SRC_DIR)/%.c=$(BUILD_DIR)/%.o)
+
+# Installation directories
+PREFIX	?= /usr/local
+BINDIR	?= $(PREFIX)/bin
+MANDIR	?= $(PREFIX)/share/man
 
 CC	= gcc
 CFLAGS	= -Wall -Werror -O3 -std=gnu89 -pthread
@@ -17,13 +24,17 @@ $(BUILD_DIR)/%.o : $(SRC_DIR)/%.c
 	mkdir -p $(dir $@)
 	$(CC)  $(CFLAGS)  -c $<  -o $@
 
-.PHONY: clean debug
+.PHONY: clean debug install uninstall
 
 install : $(BUILD_DIR)/$(TARGET_EXEC)
-	cp $(BUILD_DIR)/$(TARGET_EXEC) /usr/local/bin
+	mkdir -p $(DESTDIR)$(BINDIR)
+	install -m755 $(BUILD_DIR)/$(TARGET_EXEC) $(DESTDIR)$(BINDIR)/
+	mkdir -p $(DESTDIR)$(MANDIR)/man1
+	# install manpage to $(DESTDIR)$(MANDIR)/man1/perg.1
 
 uninstall :
-	rm -f /usr/local/bin/$(TARGET_EXEC)
+	rm -f $(BINDIR)/$(TARGET_EXEC)
+	rm -f $(MANDIR)/man1/perg.1
 
 debug : clean
 	CFLAGS += -Og -g
